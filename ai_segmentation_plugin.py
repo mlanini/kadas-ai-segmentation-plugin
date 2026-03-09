@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 if TYPE_CHECKING:
     import numpy
 
-from qgis.PyQt.QtWidgets import QAction, QMessageBox
-from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QVariant, QSettings
+from qgis.PyQt.QtWidgets import QAction, QMessageBox, QMenu
+from qgis.PyQt.QtGui import QIcon, QDesktopServices
+from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QVariant, QSettings, QUrl
 from qgis.core import (
     QgsProject,
     QgsRasterLayer,
@@ -27,10 +27,18 @@ from qgis.core import (
 from qgis.gui import QgisInterface, QgsRubberBand
 from qgis.PyQt.QtGui import QColor
 
-from .ai_segmentation_dockwidget import AISegmentationDockWidget
-from .ai_segmentation_maptool import AISegmentationMapTool
-from .error_report_dialog import show_error_report, start_log_collector
-from ..core.i18n import tr
+# Try to import KADAS-specific interface
+try:
+    from kadas.kadasgui import KadasPluginInterface
+    KADAS_AVAILABLE = True
+except ImportError:
+    KADAS_AVAILABLE = False
+
+from .ui.ai_segmentation_dockwidget import AISegmentationDockWidget
+from .ui.ai_segmentation_maptool import AISegmentationMapTool
+from .ui.error_report_dialog import show_error_report, start_log_collector
+from .core.i18n import tr
+from .core.logger import get_logger
 
 # QSettings keys for tutorial flags
 SETTINGS_KEY_TUTORIAL_SIMPLE = "AI_Segmentation/tutorial_simple_shown"
@@ -50,7 +58,7 @@ class DepsInstallWorker(QThread):
 
     def run(self):
         try:
-            from ..core.venv_manager import create_venv_and_install
+            from .core.venv_manager import create_venv_and_install
             success, message = create_venv_and_install(
                 progress_callback=lambda percent, msg: self.progress.emit(percent, msg),
                 cancel_check=lambda: self._cancelled,
@@ -72,7 +80,7 @@ class DownloadWorker(QThread):
 
     def run(self):
         try:
-            from ..core.checkpoint_manager import download_checkpoint
+            from .core.checkpoint_manager import download_checkpoint
             success, message = download_checkpoint(
                 progress_callback=lambda p, m: self.progress.emit(p, m)
             )
@@ -99,7 +107,7 @@ class EncodingWorker(QThread):
 
     def run(self):
         try:
-            from ..core.feature_encoder import encode_raster_to_features
+            from .core.feature_encoder import encode_raster_to_features
             success, message = encode_raster_to_features(
                 self.raster_path,
                 self.output_dir,
@@ -205,12 +213,21 @@ class PromptManager:
 class AISegmentationPlugin:
 
     def __init__(self, iface: QgisInterface):
-        self.iface = iface
+        # Cast to KadasPluginInterface if available (KADAS Albireo 2)
+        if KADAS_AVAILABLE:
+            self.iface = KadasPluginInterface.cast(iface)
+        else:
+            self.iface = iface
         self.plugin_dir = Path(__file__).parent.parent.parent
+
+        # Initialize logger (STANDARD level for production)
+        self.log = get_logger(level="STANDARD")
+        self.log.info("AI Segmentation plugin initialized")
 
         self.dock_widget: Optional[AISegmentationDockWidget] = None
         self.map_tool: Optional[AISegmentationMapTool] = None
         self.action: Optional[QAction] = None
+        self.menu: Optional[QMenu] = None  # For KADAS menu support
 
         self.predictor = None
         self.feature_dataset = None
@@ -316,6 +333,10 @@ class AISegmentationPlugin:
 
     def initGui(self):
         start_log_collector()
+        
+        # Initialize proxy settings for network operations (downloads, etc.)
+        from .core.proxy_handler import initialize_proxy
+        initialize_proxy()
 
         icon_path = str(self.plugin_dir / "resources" / "icons" / "icon.png")
         if not os.path.exists(icon_path):
@@ -337,31 +358,57 @@ class AISegmentationPlugin:
 
         self.iface.addToolBarIcon(self.action)
 
-        # Add directly to Plugins menu (no submenu)
-        plugins_menu = self.iface.pluginMenu()
-        plugins_menu.addAction(self.action)
+        # Register menu with KADAS interface or fallback to QGIS standard
+        if KADAS_AVAILABLE:
+            # Create custom "AI" ribbon tab in KADAS
+            self.log.info("Registering menu in KADAS custom ribbon tab 'AI'")
+            QgsMessageLog.logMessage(
+                "Registering menu in KADAS custom ribbon tab 'AI'",
+                "AI Segmentation",
+                level=Qgis.Info
+            )
+            self.menu = QMenu(tr("AI Segmentation"))
+            self.menu.addAction(self.action)
+            
+            # Add separator
+            self.menu.addSeparator()
+            
+            # Add "Open Log File" action
+            log_action = QAction(tr("Open Log File"), self.iface.mainWindow())
+            log_action.setStatusTip(tr("Open the plugin log file"))
+            log_action.triggered.connect(self.open_log_file)
+            self.menu.addAction(log_action)
+            
+            # Add "Help" action
+            help_action = QAction(tr("Help (Online)"), self.iface.mainWindow())
+            help_action.setStatusTip(tr("Open plugin documentation on GitHub"))
+            help_action.triggered.connect(self.open_help_online)
+            self.menu.addAction(help_action)
+            
+            self.iface.addActionMenu(
+                tr("AI Segmentation"),
+                icon,
+                self.menu,
+                self.iface.PLUGIN_MENU,
+                self.iface.CUSTOM_TAB,
+                "AI"
+            )
+        else:
+            # Fallback: use standard QGIS plugin menu
+            self.log.info("Registering menu in standard QGIS plugin menu")
+            QgsMessageLog.logMessage(
+                "Registering menu in standard QGIS plugin menu",
+                "AI Segmentation",
+                level=Qgis.Info
+            )
+            plugins_menu = self.iface.pluginMenu()
+            plugins_menu.addAction(self.action)
 
-        self.dock_widget = AISegmentationDockWidget(self.iface.mainWindow())
-        self.dock_widget.setVisible(False)
-        self.dock_widget.visibilityChanged.connect(self._on_dock_visibility_changed)
+        # Don't create dock widget here - create it on-demand in toggle_dock_widget()
+        # like vantor plugin does
+        self.dock_widget = None
 
-        self.dock_widget.install_dependencies_requested.connect(self._on_install_requested)
-        self.dock_widget.cancel_deps_install_requested.connect(self._on_cancel_deps_install)
-        self.dock_widget.download_checkpoint_requested.connect(self._on_download_checkpoint_requested)
-        self.dock_widget.cancel_download_requested.connect(self._on_cancel_download)
-        self.dock_widget.cancel_preparation_requested.connect(self._on_cancel_preparation)
-        self.dock_widget.start_segmentation_requested.connect(self._on_start_segmentation)
-        self.dock_widget.save_polygon_requested.connect(self._on_save_polygon)
-        self.dock_widget.export_layer_requested.connect(self._on_export_layer)
-        self.dock_widget.clear_points_requested.connect(self._on_clear_points)
-        self.dock_widget.undo_requested.connect(self._on_undo)
-        self.dock_widget.stop_segmentation_requested.connect(self._on_stop_segmentation)
-        self.dock_widget.refine_settings_changed.connect(self._on_refine_settings_changed)
-        self.dock_widget.batch_mode_changed.connect(self._on_batch_mode_changed)
-        self.dock_widget.layer_combo.layerChanged.connect(self._on_layer_combo_changed)
-
-        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock_widget)
-
+        # Map tool setup (dock widget signals will be connected on first toggle)
         self.map_tool = AISegmentationMapTool(self.iface.mapCanvas())
         self.map_tool.positive_click.connect(self._on_positive_click)
         self.map_tool.negative_click.connect(self._on_negative_click)
@@ -434,10 +481,32 @@ class AISegmentationPlugin:
                 except RuntimeError:
                     pass
 
-        # 4. Remove menu/toolbar
-        plugins_menu = self.iface.pluginMenu()
-        plugins_menu.removeAction(self.action)
-        self.iface.removeToolBarIcon(self.action)
+        # 4. Remove menu/toolbar (handle both KADAS and QGIS)
+        if KADAS_AVAILABLE and self.menu:
+            # Remove KADAS custom ribbon tab menu
+            try:
+                self.iface.removeActionMenu(
+                    self.menu,
+                    self.iface.PLUGIN_MENU,
+                    self.iface.CUSTOM_TAB,
+                    "AI"
+                )
+                self.menu = None
+            except (AttributeError, RuntimeError):
+                pass
+        else:
+            # Remove standard QGIS plugin menu
+            try:
+                plugins_menu = self.iface.pluginMenu()
+                plugins_menu.removeAction(self.action)
+            except (AttributeError, RuntimeError):
+                pass
+        
+        # Remove toolbar icon
+        try:
+            self.iface.removeToolBarIcon(self.action)
+        except (AttributeError, RuntimeError):
+            pass
 
         # 5. Remove dock widget
         if self.dock_widget:
@@ -462,9 +531,43 @@ class AISegmentationPlugin:
             self._safe_remove_rubber_band(rb)
         self.saved_rubber_bands = []
 
-    def toggle_dock_widget(self, checked: bool):
-        if self.dock_widget:
-            self.dock_widget.setVisible(checked)
+    def toggle_dock_widget(self):
+        """Toggle dock widget visibility. Creates dock on first access (lazy initialization)."""
+        # Lazy initialization: create dock only on first toggle (like vantor plugin)
+        if self.dock_widget is None:
+            self.dock_widget = AISegmentationDockWidget(self.iface.mainWindow())
+            self.dock_widget.setObjectName("AISegmentationDock")
+            
+            # Connect all dock widget signals
+            self.dock_widget.visibilityChanged.connect(self._on_dock_visibility_changed)
+            self.dock_widget.install_dependencies_requested.connect(self._on_install_requested)
+            self.dock_widget.cancel_deps_install_requested.connect(self._on_cancel_deps_install)
+            self.dock_widget.download_checkpoint_requested.connect(self._on_download_checkpoint_requested)
+            self.dock_widget.cancel_download_requested.connect(self._on_cancel_download)
+            self.dock_widget.cancel_preparation_requested.connect(self._on_cancel_preparation)
+            self.dock_widget.start_segmentation_requested.connect(self._on_start_segmentation)
+            self.dock_widget.save_polygon_requested.connect(self._on_save_polygon)
+            self.dock_widget.export_layer_requested.connect(self._on_export_layer)
+            self.dock_widget.clear_points_requested.connect(self._on_clear_points)
+            self.dock_widget.undo_requested.connect(self._on_undo)
+            self.dock_widget.stop_segmentation_requested.connect(self._on_stop_segmentation)
+            self.dock_widget.refine_settings_changed.connect(self._on_refine_settings_changed)
+            self.dock_widget.batch_mode_changed.connect(self._on_batch_mode_changed)
+            self.dock_widget.layer_combo.layerChanged.connect(self._on_layer_combo_changed)
+            
+            # CRITICAL KADAS FIX: Must use iface.mainWindow().addDockWidget() NOT iface.addDockWidget()
+            # This matches vantor plugin and is required for proper docking in KADAS
+            self.iface.mainWindow().addDockWidget(Qt.RightDockWidgetArea, self.dock_widget)
+            self.dock_widget.show()
+            self.dock_widget.raise_()
+            return
+        
+        # Subsequent toggles: just show/hide
+        if self.dock_widget.isVisible():
+            self.dock_widget.hide()
+        else:
+            self.dock_widget.show()
+            self.dock_widget.raise_()
 
     def _on_dock_visibility_changed(self, visible: bool):
         if self.action:
@@ -475,6 +578,15 @@ class AISegmentationPlugin:
             self._do_first_time_setup()
 
     def _do_first_time_setup(self):
+        # Safety check: dock widget must exist before we call methods on it
+        if self.dock_widget is None:
+            QgsMessageLog.logMessage(
+                "ERROR: _do_first_time_setup called but dock_widget is None!",
+                "AI Segmentation",
+                level=Qgis.Critical
+            )
+            return
+
         QgsMessageLog.logMessage(
             "Panel opened - checking dependencies...",
             "AI Segmentation",
@@ -482,7 +594,7 @@ class AISegmentationPlugin:
         )
 
         try:
-            from ..core.venv_manager import get_venv_status, cleanup_old_libs
+            from .core.venv_manager import get_venv_status, cleanup_old_libs
 
             cleanup_old_libs()
 
@@ -513,7 +625,7 @@ class AISegmentationPlugin:
 
     def _check_checkpoint(self):
         try:
-            from ..core.checkpoint_manager import checkpoint_exists
+            from .core.checkpoint_manager import checkpoint_exists
 
             if checkpoint_exists():
                 self.dock_widget.set_checkpoint_status(True, "SAM model ready")
@@ -531,8 +643,8 @@ class AISegmentationPlugin:
 
     def _load_predictor(self):
         try:
-            from ..core.checkpoint_manager import get_checkpoint_path
-            from ..core.sam_predictor import build_sam_vit_b_no_encoder, SamPredictorNoImgEncoder
+            from .core.checkpoint_manager import get_checkpoint_path
+            from .core.sam_predictor import build_sam_vit_b_no_encoder, SamPredictorNoImgEncoder
 
             checkpoint_path = get_checkpoint_path()
             sam_config = build_sam_vit_b_no_encoder(checkpoint=checkpoint_path)
@@ -556,7 +668,7 @@ class AISegmentationPlugin:
     def _verify_venv(self):
         """Verify virtual environment status."""
         try:
-            from ..core.venv_manager import verify_venv
+            from .core.venv_manager import verify_venv
             is_valid, message = verify_venv()
 
             if is_valid:
@@ -581,10 +693,10 @@ class AISegmentationPlugin:
     def _show_device_info(self):
         """Detect and display which compute device will be used."""
         try:
-            from ..core.venv_manager import ensure_venv_packages_available
+            from .core.venv_manager import ensure_venv_packages_available
             ensure_venv_packages_available()
 
-            from ..core.device_manager import get_device_info
+            from .core.device_manager import get_device_info
             info = get_device_info()
             self.dock_widget.set_device_info(info)
             QgsMessageLog.logMessage(
@@ -600,7 +712,7 @@ class AISegmentationPlugin:
             )
 
     def _on_install_requested(self):
-        from ..core.venv_manager import get_venv_status
+        from .core.venv_manager import get_venv_status
 
         is_ready, message = get_venv_status()
         if is_ready:
@@ -628,14 +740,14 @@ class AISegmentationPlugin:
         self.deps_install_worker.start()
 
         # Show activation popup 2 seconds after install starts (if not already activated)
-        from ..core.activation_manager import is_plugin_activated
+        from .core.activation_manager import is_plugin_activated
         if not is_plugin_activated():
             from qgis.PyQt.QtCore import QTimer
             QTimer.singleShot(2000, self._show_activation_popup_if_needed)
 
     def _show_activation_popup_if_needed(self):
         """Show activation popup during installation if not already activated."""
-        from ..core.activation_manager import is_plugin_activated
+        from .core.activation_manager import is_plugin_activated
         if not is_plugin_activated() and not self.dock_widget.is_activated():
             self.dock_widget.show_activation_dialog()
 
@@ -646,7 +758,7 @@ class AISegmentationPlugin:
         self.dock_widget.set_deps_install_progress(100, "Done")
 
         if success:
-            from ..core.venv_manager import verify_venv
+            from .core.venv_manager import verify_venv
             is_valid, verify_msg = verify_venv()
 
             if is_valid:
@@ -751,7 +863,7 @@ class AISegmentationPlugin:
         self._current_layer_name = layer.name().replace(" ", "_")
         raster_path = layer.source()
 
-        from ..core.checkpoint_manager import has_features_for_raster, get_raster_features_dir, get_checkpoint_path
+        from .core.checkpoint_manager import has_features_for_raster, get_raster_features_dir, get_checkpoint_path
 
         if has_features_for_raster(raster_path):
             self._load_features_and_activate(raster_path)
@@ -789,7 +901,7 @@ class AISegmentationPlugin:
 
     def _on_encoding_finished(self, success: bool, message: str, raster_path: str):
         if success:
-            from ..core.checkpoint_manager import get_raster_features_dir
+            from .core.checkpoint_manager import get_raster_features_dir
             cache_dir = get_raster_features_dir(raster_path)
             self.dock_widget.set_preparation_progress(100, "Done!")
             self.dock_widget.set_encoding_cache_path(str(cache_dir))
@@ -799,7 +911,7 @@ class AISegmentationPlugin:
             is_cancelled = "cancelled" in message.lower() or "canceled" in message.lower()
 
             # Clean up partial cache files
-            from ..core.checkpoint_manager import clear_features_for_raster
+            from .core.checkpoint_manager import clear_features_for_raster
             try:
                 clear_features_for_raster(raster_path)
                 QgsMessageLog.logMessage(
@@ -828,8 +940,8 @@ class AISegmentationPlugin:
 
     def _load_features_and_activate(self, raster_path: str):
         try:
-            from ..core.checkpoint_manager import get_raster_features_dir
-            from ..core.feature_dataset import FeatureDataset
+            from .core.checkpoint_manager import get_raster_features_dir
+            from .core.feature_dataset import FeatureDataset
 
             features_dir = get_raster_features_dir(raster_path)
             self.feature_dataset = FeatureDataset(features_dir, cache=True)
@@ -1012,7 +1124,7 @@ class AISegmentationPlugin:
 
         self._ensure_polygon_rubberband_sync()
 
-        from ..core.polygon_exporter import mask_to_polygons, apply_mask_refinement
+        from .core.polygon_exporter import mask_to_polygons, apply_mask_refinement
 
         # Apply all mask-level refinements for display (green shows with effects)
         mask_for_display = self.current_mask
@@ -1082,7 +1194,7 @@ class AISegmentationPlugin:
 
     def _on_export_layer(self):
         """Export masks to a new layer. Behavior depends on mode."""
-        from ..core.polygon_exporter import mask_to_polygons, apply_mask_refinement
+        from .core.polygon_exporter import mask_to_polygons, apply_mask_refinement
 
         self._ensure_polygon_rubberband_sync()
 
@@ -1528,7 +1640,7 @@ class AISegmentationPlugin:
             return
 
         try:
-            from ..core.polygon_exporter import mask_to_polygons, apply_mask_refinement
+            from .core.polygon_exporter import mask_to_polygons, apply_mask_refinement
 
             QgsMessageLog.logMessage(
                 f"Applying refinement: expand={self._refine_expand}, simplify={self._refine_simplify}",
@@ -1586,7 +1698,7 @@ class AISegmentationPlugin:
             return
 
         try:
-            from ..core.polygon_exporter import mask_to_polygons, apply_mask_refinement
+            from .core.polygon_exporter import mask_to_polygons, apply_mask_refinement
 
             for i, (polygon_data, rubber_band) in enumerate(zip(self.saved_polygons, self.saved_rubber_bands)):
                 raw_mask = polygon_data.get('raw_mask')
@@ -1682,7 +1794,7 @@ class AISegmentationPlugin:
     def _run_prediction(self):
         """Run SAM prediction using all positive and negative points."""
         from rasterio.transform import from_bounds as transform_from_bounds
-        from ..core.feature_dataset import FeatureSampler
+        from .core.feature_dataset import FeatureSampler
 
         all_points = self.prompts.positive_points + self.prompts.negative_points
         if not all_points:
@@ -1804,7 +1916,7 @@ class AISegmentationPlugin:
             return
 
         try:
-            from ..core.polygon_exporter import mask_to_polygons, apply_mask_refinement
+            from .core.polygon_exporter import mask_to_polygons, apply_mask_refinement
 
             # Apply refinement to preview in both modes (refine affects current mask only)
             mask_to_display = self.current_mask
@@ -2025,3 +2137,37 @@ class AISegmentationPlugin:
         if self.dock_widget:
             self.dock_widget.set_point_count(0, 0)
             self.dock_widget.set_saved_polygon_count(0)
+
+    def open_log_file(self):
+        """Opens the log file with system default text editor."""
+        import subprocess
+        log_path = os.environ.get('KADAS_AI_SEGMENTATION_LOG', os.path.expanduser('~/.kadas/ai_segmentation.log'))
+        try:
+            if sys.platform.startswith('win'):
+                os.startfile(log_path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.Popen(['open', log_path])
+            else:
+                subprocess.Popen(['xdg-open', log_path])
+            self.log.info(f"Opened log file: {log_path}")
+        except Exception as e:
+            self.log.error(f"Failed to open log file: {e}")
+            QMessageBox.warning(
+                self.iface.mainWindow(),
+                tr("Error Opening Log"),
+                tr("Could not open log file:\n{0}").format(str(e))
+            )
+
+    def open_help_online(self):
+        """Opens the plugin documentation on GitHub in the default browser."""
+        help_url = "https://github.com/mlanini/kadas-ai-segmentation-plugin#readme"
+        try:
+            QDesktopServices.openUrl(QUrl(help_url))
+            self.log.info(f"Opened help documentation: {help_url}")
+        except Exception as e:
+            self.log.error(f"Failed to open help URL: {e}")
+            QMessageBox.warning(
+                self.iface.mainWindow(),
+                tr("Error Opening Help"),
+                tr("Could not open help documentation:\n{0}").format(str(e))
+            )

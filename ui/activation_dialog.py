@@ -62,14 +62,14 @@ class ActivationDialog(QDialog):
         banner_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(banner_label)
 
-        # Title - friendly (uses palette for theme compatibility)
+        # Title - friendly
         title_label = QLabel(tr("Thanks for trying our plugin!"))
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("color: palette(text);")
+        title_label.setStyleSheet("color: white;")
         layout.addWidget(title_label)
 
         # Description - clear about the email/code relationship
@@ -81,7 +81,7 @@ class ActivationDialog(QDialog):
         desc_font = QFont()
         desc_font.setPointSize(12)
         desc_label.setFont(desc_font)
-        desc_label.setStyleSheet("color: palette(text);")
+        desc_label.setStyleSheet("color: white;")
         layout.addWidget(desc_label)
 
         # Clear instruction about the flow
@@ -94,7 +94,7 @@ class ActivationDialog(QDialog):
         flow_font = QFont()
         flow_font.setPointSize(12)
         flow_label.setFont(flow_font)
-        flow_label.setStyleSheet("color: palette(text);")
+        flow_label.setStyleSheet("color: white;")
         layout.addWidget(flow_label)
 
         # Get code button - clearer label
@@ -115,13 +115,13 @@ class ActivationDialog(QDialog):
         sep.setFrameShadow(QFrame.Sunken)
         layout.addWidget(sep)
 
-        # Code input label (uses palette for theme compatibility)
+        # Code input label
         code_label = QLabel(tr("Paste your verification code:"))
         code_label.setAlignment(Qt.AlignLeft)
         code_font = QFont()
         code_font.setPointSize(11)
         code_label.setFont(code_font)
-        code_label.setStyleSheet("color: palette(text);")
+        code_label.setStyleSheet("color: white;")
         layout.addWidget(code_label)
 
         # Code input section

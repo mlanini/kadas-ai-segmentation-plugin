@@ -8,6 +8,7 @@ __pycache__/
 *.pyo
 
 .vscode/
+.claude/
 .idea/
 *.swp
 *.swo
@@ -18,3 +19,22 @@ python_standalone/
 libs/
 venv_py3.9/
 venv_py3.12/
+
+# Distribution
+dist/
+*.zip
+IMPLEMENTATION_COMPLETE.md
+.gitignore
+.gitignore
+KADAS_COMPATIBILITY.md
+KADAS_ADAPTATION_SUMMARY.md
+KADAS_QUICK_REFERENCE.md
+PACKAGING_SETUP_COMPLETE.md
+PROXY_IMPLEMENTATION_SUMMARY.md
+PROXY_VPN_SUPPORT.md
+CACHE_DIRECTORIES.md
+CACHE_UPDATE_SUMMARY.md
+PACKAGING.md
+package_complex.py
+.gitignore
+package.py

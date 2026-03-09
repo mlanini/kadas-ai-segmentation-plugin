@@ -47,12 +47,9 @@ class AISegmentationDockWidget(QDockWidget):
     batch_mode_changed = pyqtSignal(bool)  # True = batch mode, False = simple mode
 
     def __init__(self, parent=None):
-        super().__init__("", parent)  # Empty title, we use custom title bar
+        super().__init__("AI Segmentation by TerraLab", parent)
 
         self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-
-        # Custom title bar with clickable TerraLab link
-        self._setup_title_bar()
 
         # Initialize state variables that are needed during UI setup
         self._refine_expanded = False  # Refine panel collapsed state persisted in session
@@ -99,25 +96,36 @@ class AISegmentationDockWidget(QDockWidget):
         # Update UI state
         self._update_full_ui()
 
-    def _setup_title_bar(self):
-        """Setup custom title bar with clickable TerraLab link."""
-        title_widget = QWidget()
-        title_layout = QHBoxLayout(title_widget)
-        title_layout.setContentsMargins(8, 4, 8, 4)
-        title_layout.setSpacing(0)
-
-        title_label = QLabel(
-            'AI Segmentation by <a href="https://terra-lab.ai" style="color: #1976d2; text-decoration: none;">TerraLab</a>'
-        )
-        title_label.setOpenExternalLinks(True)
-        title_label.setStyleSheet("font-weight: bold; font-size: 12px;")
-        title_layout.addWidget(title_label)
-        title_layout.addStretch()
-
-        self.setTitleBarWidget(title_widget)
-
     def _setup_ui(self):
+        """Setup the main UI components."""
+        # Add TerraLab info at top
+        self._setup_terralab_header()
         self._setup_welcome_section()
+        self._setup_dependencies_section()
+        self._setup_checkpoint_section()
+        self._setup_activation_section()
+        self._setup_segmentation_section()
+        self.main_layout.addStretch()
+        self._setup_about_section()
+
+    def _setup_terralab_header(self):
+        """Add TerraLab branding header."""
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 8)
+        header_layout.setSpacing(4)
+
+        terra_label = QLabel(
+            'Based on QGIS plugin by <a href="https://terra-lab.ai" style="color: #1976d2; text-decoration: none;">TerraLab</a> - KADAS Albireo 2 compatible'
+        )
+        terra_label.setOpenExternalLinks(True)
+        terra_label.setStyleSheet("font-size: 10px; color: #888888;")
+        header_layout.addWidget(terra_label)
+        header_layout.addStretch()
+
+        self.main_layout.addWidget(header_widget)
+
+    def _setup_welcome_section(self):
         self._setup_dependencies_section()
         self._setup_checkpoint_section()
         self._setup_activation_section()
@@ -141,15 +149,15 @@ class AISegmentationDockWidget(QDockWidget):
         layout.setSpacing(4)
 
         welcome_title = QLabel(tr("Welcome! Two quick steps to get started:"))
-        welcome_title.setStyleSheet("font-weight: bold; font-size: 12px; color: palette(text);")
+        welcome_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #CCCCCC;")
         layout.addWidget(welcome_title)
 
         step1_label = QLabel("1. " + tr("Install AI dependencies (~800MB)"))
-        step1_label.setStyleSheet("font-size: 11px; color: palette(text); margin-left: 8px;")
+        step1_label.setStyleSheet("font-size: 11px; color: #CCCCCC; margin-left: 8px;")
         layout.addWidget(step1_label)
 
         step2_label = QLabel("2. " + tr("Download the segmentation model (~375MB)"))
-        step2_label.setStyleSheet("font-size: 11px; color: palette(text); margin-left: 8px;")
+        step2_label.setStyleSheet("font-size: 11px; color: #CCCCCC; margin-left: 8px;")
         layout.addWidget(step2_label)
 
         self.main_layout.addWidget(self.welcome_widget)
@@ -159,7 +167,7 @@ class AISegmentationDockWidget(QDockWidget):
         layout = QVBoxLayout(self.deps_group)
 
         self.deps_status_label = QLabel(tr("Checking if dependencies are installed..."))
-        self.deps_status_label.setStyleSheet("color: palette(text);")
+        self.deps_status_label.setStyleSheet("color: #CCCCCC;")
         layout.addWidget(self.deps_status_label)
 
         self.deps_progress = QProgressBar()
@@ -168,7 +176,7 @@ class AISegmentationDockWidget(QDockWidget):
         layout.addWidget(self.deps_progress)
 
         self.deps_progress_label = QLabel("")
-        self.deps_progress_label.setStyleSheet("color: palette(text); font-size: 10px;")
+        self.deps_progress_label.setStyleSheet("color: #CCCCCC; font-size: 10px;")
         self.deps_progress_label.setVisible(False)
         layout.addWidget(self.deps_progress_label)
 
@@ -182,6 +190,15 @@ class AISegmentationDockWidget(QDockWidget):
         )
         layout.addWidget(self.install_button)
 
+        # Install path label - shows where dependencies will be installed
+        self.install_path_label = QLabel()
+        self.install_path_label.setStyleSheet("color: #888888; font-size: 9pt;")
+        self.install_path_label.setWordWrap(True)
+        from ..core.venv_manager import CACHE_DIR
+        self.install_path_label.setText("Install location: {}".format(CACHE_DIR))
+        self.install_path_label.setVisible(False)
+        layout.addWidget(self.install_path_label)
+
         # CUDA checkbox - only shown on Windows/Linux (macOS uses MPS instead)
         self.cuda_checkbox = QCheckBox(tr("Enable NVIDIA GPU acceleration (CUDA)"))
         self.cuda_checkbox.setToolTip(
@@ -190,7 +207,7 @@ class AISegmentationDockWidget(QDockWidget):
         self.cuda_checkbox.setStyleSheet("""
             QCheckBox {
                 font-size: 11px;
-                color: palette(text);
+                color: #CCCCCC;
                 padding: 2px 0px;
             }
             QCheckBox::indicator {
@@ -202,7 +219,7 @@ class AISegmentationDockWidget(QDockWidget):
 
         # Description label below the CUDA checkbox
         self.cuda_description = QLabel(tr("Optional: speeds up segmentation. Requires ~2.5GB of disk space."))
-        self.cuda_description.setStyleSheet("font-size: 10px; color: palette(mid); padding-left: 20px;")
+        self.cuda_description.setStyleSheet("font-size: 10px; color: #888888; padding-left: 20px;")
         self.cuda_description.setWordWrap(True)
         self.cuda_description.setVisible(False)
         layout.addWidget(self.cuda_description)
@@ -236,7 +253,7 @@ class AISegmentationDockWidget(QDockWidget):
         layout = QVBoxLayout(self.checkpoint_group)
 
         self.checkpoint_status_label = QLabel(tr("Waiting for Step 1..."))
-        self.checkpoint_status_label.setStyleSheet("color: palette(mid);")
+        self.checkpoint_status_label.setStyleSheet("color: #888888;")
         layout.addWidget(self.checkpoint_status_label)
 
         self.checkpoint_progress = QProgressBar()
@@ -245,7 +262,7 @@ class AISegmentationDockWidget(QDockWidget):
         layout.addWidget(self.checkpoint_progress)
 
         self.checkpoint_progress_label = QLabel("")
-        self.checkpoint_progress_label.setStyleSheet("color: palette(text); font-size: 10px;")
+        self.checkpoint_progress_label.setStyleSheet("color: #CCCCCC; font-size: 10px;")
         self.checkpoint_progress_label.setVisible(False)
         layout.addWidget(self.checkpoint_progress_label)
 
@@ -271,7 +288,7 @@ class AISegmentationDockWidget(QDockWidget):
         # Explanation about why we need the email
         desc_label = QLabel(tr("Enter your email to receive updates and get a verification code."))
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("font-size: 11px; color: palette(text);")
+        desc_label.setStyleSheet("font-size: 11px; color: #CCCCCC;")
         layout.addWidget(desc_label)
 
         # Get code button
@@ -288,7 +305,7 @@ class AISegmentationDockWidget(QDockWidget):
 
         # Code input label
         code_label = QLabel(tr("Then paste your code:"))
-        code_label.setStyleSheet("font-size: 11px; margin-top: 6px; color: palette(text);")
+        code_label.setStyleSheet("font-size: 11px; margin-top: 6px; color: #CCCCCC;")
         layout.addWidget(code_label)
 
         # Code input section - compact
@@ -337,7 +354,7 @@ class AISegmentationDockWidget(QDockWidget):
         layout.setContentsMargins(0, 8, 0, 0)
 
         layer_label = QLabel(tr("Select a Raster Layer to Segment:"))
-        layer_label.setStyleSheet("font-weight: bold; color: palette(text);")
+        layer_label.setStyleSheet("font-weight: bold; color: #CCCCCC;")
         layout.addWidget(layer_label)
         self.layer_label = layer_label
 
@@ -386,7 +403,7 @@ class AISegmentationDockWidget(QDockWidget):
                 border-radius: 4px;
                 padding: 8px;
                 font-size: 12px;
-                color: palette(text);
+                color: #CCCCCC;
             }
         """)
         self.instructions_label.setVisible(False)
@@ -397,7 +414,7 @@ class AISegmentationDockWidget(QDockWidget):
         self.encoding_info_label.setStyleSheet(
             "background-color: rgba(46, 125, 50, 0.15); padding: 8px; "
             "border-radius: 4px; font-size: 11px; border: 1px solid rgba(46, 125, 50, 0.3); "
-            "color: palette(text);"
+            "color: #CCCCCC;"
         )
         self.encoding_info_label.setWordWrap(True)
         self.encoding_info_label.setVisible(False)
@@ -409,7 +426,7 @@ class AISegmentationDockWidget(QDockWidget):
         layout.addWidget(self.prep_progress)
 
         self.prep_status_label = QLabel("")
-        self.prep_status_label.setStyleSheet("color: palette(text); font-size: 11px;")
+        self.prep_status_label.setStyleSheet("color: #CCCCCC; font-size: 11px;")
         self.prep_status_label.setVisible(False)
         layout.addWidget(self.prep_status_label)
 
@@ -459,11 +476,11 @@ class AISegmentationDockWidget(QDockWidget):
         self.batch_mode_checkbox.setStyleSheet("""
             QCheckBox {
                 font-size: 12px;
-                color: palette(text);
+                color: #CCCCCC;
                 padding: 2px 4px;
             }
             QCheckBox:disabled {
-                color: palette(mid);
+                color: #888888;
             }
             QCheckBox::indicator {
                 width: 16px;
@@ -559,7 +576,7 @@ class AISegmentationDockWidget(QDockWidget):
                 tr("For multiple elements in one layer, use Batch mode."))
         )
         info_text.setWordWrap(True)
-        info_text.setStyleSheet("font-size: 11px; color: palette(text);")
+        info_text.setStyleSheet("font-size: 11px; color: #CCCCCC;")
         info_layout.addWidget(info_text, 1)
 
         self.one_element_info_widget.setVisible(False)
@@ -591,7 +608,7 @@ class AISegmentationDockWidget(QDockWidget):
                 tr("(e.g. all buildings in an area, all cars in a parking lot)"))
         )
         batch_info_text.setWordWrap(True)
-        batch_info_text.setStyleSheet("font-size: 11px; color: palette(text);")
+        batch_info_text.setStyleSheet("font-size: 11px; color: #CCCCCC;")
         batch_info_layout.addWidget(batch_info_text, 1)
 
         self.batch_info_widget.setVisible(False)
@@ -886,7 +903,7 @@ class AISegmentationDockWidget(QDockWidget):
         if not self._dependencies_ok:
             self.checkpoint_group.setEnabled(False)
             self.checkpoint_status_label.setText(tr("Waiting for Step 1..."))
-            self.checkpoint_status_label.setStyleSheet("color: palette(mid);")
+            self.checkpoint_status_label.setStyleSheet("color: #888888;")
             self.download_button.setVisible(False)
         else:
             self.checkpoint_group.setEnabled(True)
@@ -991,8 +1008,9 @@ class AISegmentationDockWidget(QDockWidget):
         self.deps_status_label.setText(message)
 
         if ok:
-            self.deps_status_label.setStyleSheet("font-weight: bold; color: palette(text);")
+            self.deps_status_label.setStyleSheet("font-weight: bold; color: #CCCCCC;")
             self.install_button.setVisible(False)
+            self.install_path_label.setVisible(False)
             self.cuda_checkbox.setVisible(False)
             self.cuda_description.setVisible(False)
             self.cancel_deps_button.setVisible(False)
@@ -1000,9 +1018,10 @@ class AISegmentationDockWidget(QDockWidget):
             self.deps_progress_label.setVisible(False)
             self.deps_group.setVisible(False)
         else:
-            self.deps_status_label.setStyleSheet("color: palette(text);")
+            self.deps_status_label.setStyleSheet("color: #CCCCCC;")
             self.install_button.setVisible(True)
             self.install_button.setEnabled(True)
+            self.install_path_label.setVisible(True)
             # Show CUDA checkbox on non-macOS when deps need installing
             show_cuda = sys.platform != "darwin"
             self.cuda_checkbox.setVisible(show_cuda)
@@ -1077,13 +1096,13 @@ class AISegmentationDockWidget(QDockWidget):
         self.checkpoint_status_label.setText(message)
 
         if ok:
-            self.checkpoint_status_label.setStyleSheet("font-weight: bold; color: palette(text);")
+            self.checkpoint_status_label.setStyleSheet("font-weight: bold; color: #CCCCCC;")
             self.download_button.setVisible(False)
             self.checkpoint_progress.setVisible(False)
             self.checkpoint_progress_label.setVisible(False)
             self.checkpoint_group.setVisible(False)
         else:
-            self.checkpoint_status_label.setStyleSheet("color: palette(text);")
+            self.checkpoint_status_label.setStyleSheet("color: #CCCCCC;")
             self.download_button.setVisible(True)
             self.download_button.setEnabled(True)
             self.checkpoint_group.setVisible(True)

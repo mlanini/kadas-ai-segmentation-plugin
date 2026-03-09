@@ -9,6 +9,34 @@ import importlib.util
 from qgis.core import QgsMessageLog, Qgis, QgsSettings
 
 
+def _get_cache_base_dir() -> str:
+    """Get the appropriate cache directory for KADAS.
+    
+    Checks AI_SEGMENTATION_CACHE_DIR environment variable first (for corporate environments),
+    then falls back to platform-specific defaults.
+    
+    Returns:
+        - Environment variable AI_SEGMENTATION_CACHE_DIR if set
+        - KADAS: ~/.kadas_ai_segmentation (Linux/Mac) or %APPDATA%/kadas_ai_segmentation (Windows)
+    """
+    # Check environment variable first (for corporate/IT-managed installations)
+    custom_cache = os.environ.get("AI_SEGMENTATION_CACHE_DIR")
+    if custom_cache:
+        os.makedirs(custom_cache, exist_ok=True)
+        return custom_cache
+    
+    if sys.platform == "win32":
+        # Windows: Use %APPDATA%/kadas_ai_segmentation
+        appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
+        base_dir = os.path.join(appdata, "kadas_ai_segmentation")
+    else:
+        # Linux/Mac: Use hidden directory in home
+        base_dir = os.path.expanduser("~/.kadas_ai_segmentation")
+    
+    os.makedirs(base_dir, exist_ok=True)
+    return base_dir
+
+
 ALL_REQUIRED_PACKAGES = [
     ("torch", "torch", "2.0.0"),
     ("segment_anything", "segment-anything", "1.0"),
@@ -25,7 +53,7 @@ LIBS_DIR = os.path.join(PLUGIN_ROOT_DIR, 'libs')
 PACKAGES_INSTALL_DIR = LIBS_DIR
 PYTHON_VERSION_FILE = os.path.join(LIBS_DIR, '.python_version')
 
-CACHE_DIR = os.path.expanduser("~/.qgis_ai_segmentation")
+CACHE_DIR = _get_cache_base_dir()
 
 
 def _log(message: str, level=Qgis.Info):
@@ -105,7 +133,7 @@ def clean_installation() -> bool:
 def _get_python_executable() -> str:
     """Get the correct Python executable path for pip installation.
 
-    On macOS and Windows, sys.executable returns the QGIS executable, not Python.
+    On macOS and Windows, sys.executable returns the KADAS executable, not Python.
     We use sys.prefix / 'bin' / 'python3' instead (following Geo-SAM/deepness approach).
     """
     if sys.platform == "darwin":
@@ -265,6 +293,9 @@ def _run_pip_install(pip_name: str, version: str = None, target_dir: str = None)
     try:
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
+        
+        # Proxy environment variables are already set by proxy_handler.initialize_proxy()
+        # in initGui(), so they'll be automatically inherited here via os.environ.copy()
 
         if sys.platform == "win32":
             startupinfo = subprocess.STARTUPINFO()
@@ -404,7 +435,7 @@ def install_all_dependencies(
         _log("=" * 50)
         _log("All dependencies installed successfully!", Qgis.Success)
         _log(f"Install location: {PACKAGES_INSTALL_DIR}")
-        _log("Restart QGIS to ensure all packages are properly loaded.")
+        _log("Restart KADAS to ensure all packages are properly loaded.")
         _log("=" * 50)
 
     return all_success, messages

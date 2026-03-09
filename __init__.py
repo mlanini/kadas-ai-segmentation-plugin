@@ -1,20 +1,28 @@
-import os
-
-PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
-
-
-def _cleanup_old_installation():
-    """Clean up old libs/ installation if it exists."""
-    from .src.core.venv_manager import cleanup_old_libs
-    try:
-        cleanup_old_libs()
-    except Exception:
-        pass
-
-
-_cleanup_old_installation()
+"""KADAS AI Segmentation plugin entry point."""
 
 
 def classFactory(iface):
-    from .src.ui.ai_segmentation_plugin import AISegmentationPlugin
+    """Entry point for KADAS Albireo 2 plugin loader.
+    
+    The loader calls this function and expects an object exposing 
+    the plugin interface (initGui/unload, etc.).
+    
+    Args:
+        iface: KADAS KadasPluginInterface instance
+        
+    Returns:
+        AISegmentationPlugin instance
+    """
+    # Import late to avoid issues during plugin loading
+    from .ai_segmentation_plugin import AISegmentationPlugin
+    
+    # Cleanup old installations on first load (moved here from module level)
+    try:
+        from .core.venv_manager import cleanup_old_libs
+        from .core.checkpoint_manager import cleanup_legacy_sam1_data
+        cleanup_old_libs()
+        cleanup_legacy_sam1_data()
+    except Exception:
+        pass  # Don't fail plugin loading due to cleanup errors
+    
     return AISegmentationPlugin(iface)

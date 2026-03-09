@@ -1,8 +1,8 @@
 """
-Python Standalone Manager for QGIS AI-Segmentation Plugin.
+Python Standalone Manager for KADAS AI-Segmentation Plugin.
 
 Downloads and manages a standalone Python interpreter that matches
-the QGIS Python version, ensuring 100% compatibility.
+the KADAS Python version, ensuring 100% compatibility.
 
 Source: https://github.com/astral-sh/python-build-standalone
 """
@@ -28,21 +28,46 @@ STANDALONE_DIR = os.path.join(PLUGIN_ROOT_DIR, "python_standalone")
 
 def _safe_extract_tar(tar: tarfile.TarFile, dest_dir: str) -> None:
     """Safely extract tar archive with path traversal protection."""
-    dest_dir = os.path.realpath(dest_dir)
+    dest_dir = os.path.abspath(dest_dir)
+    
     for member in tar.getmembers():
-        member_path = os.path.realpath(os.path.join(dest_dir, member.name))
-        if not member_path.startswith(dest_dir + os.sep) and member_path != dest_dir:
+        # Normalize the member name (remove any leading slashes or ..)
+        member_name = os.path.normpath(member.name).lstrip(os.sep).lstrip('..')
+        
+        # Build the full path
+        member_path = os.path.abspath(os.path.join(dest_dir, member_name))
+        
+        # Security check: ensure the extracted path is within dest_dir
+        # Use normpath to handle Windows paths correctly
+        dest_dir_norm = os.path.normpath(dest_dir) + os.sep
+        member_path_norm = os.path.normpath(member_path)
+        
+        if not (member_path_norm + os.sep).startswith(dest_dir_norm) and member_path_norm != os.path.normpath(dest_dir):
             raise ValueError(f"Attempted path traversal in tar archive: {member.name}")
+        
+        # Extract the member
         tar.extract(member, dest_dir)
 
 
 def _safe_extract_zip(zip_file: zipfile.ZipFile, dest_dir: str) -> None:
     """Safely extract zip archive with path traversal protection."""
-    dest_dir = os.path.realpath(dest_dir)
+    dest_dir = os.path.abspath(dest_dir)
+    
     for member in zip_file.namelist():
-        member_path = os.path.realpath(os.path.join(dest_dir, member))
-        if not member_path.startswith(dest_dir + os.sep) and member_path != dest_dir:
+        # Normalize the member name (remove any leading slashes or ..)
+        member_name = os.path.normpath(member).lstrip(os.sep).lstrip('..')
+        
+        # Build the full path
+        member_path = os.path.abspath(os.path.join(dest_dir, member_name))
+        
+        # Security check: ensure the extracted path is within dest_dir
+        dest_dir_norm = os.path.normpath(dest_dir) + os.sep
+        member_path_norm = os.path.normpath(member_path)
+        
+        if not (member_path_norm + os.sep).startswith(dest_dir_norm) and member_path_norm != os.path.normpath(dest_dir):
             raise ValueError(f"Attempted path traversal in zip archive: {member}")
+        
+        # Extract the member
         zip_file.extract(member, dest_dir)
 
 
@@ -72,20 +97,20 @@ def _get_windows_antivirus_help(plugin_path: str) -> str:
         "Installation failed - this may be caused by antivirus software blocking the extraction.\n"
         "Please try:\n"
         "  1. Temporarily disable your antivirus (Windows Defender, etc.)\n"
-        "  2. Add an exclusion for the QGIS plugins folder\n"
+        "  2. Add an exclusion for the KADAS plugins folder\n"
         "  3. Try the installation again\n"
         "Folder to exclude: {}".format(plugin_path)
     )
 
 
-def get_qgis_python_version() -> Tuple[int, int]:
-    """Get the Python version used by QGIS."""
+def get_kadas_python_version() -> Tuple[int, int]:
+    """Get the Python version used by KADAS."""
     return (sys.version_info.major, sys.version_info.minor)
 
 
 def get_python_full_version() -> str:
     """Get the full Python version string for download (e.g., '3.12.8')."""
-    version_tuple = get_qgis_python_version()
+    version_tuple = get_kadas_python_version()
     if version_tuple in PYTHON_VERSIONS:
         return PYTHON_VERSIONS[version_tuple]
     # Fallback: construct version string (may not exist in release)
@@ -148,9 +173,12 @@ def download_python_standalone(
     cancel_check: Optional[Callable[[], bool]] = None
 ) -> Tuple[bool, str]:
     """
-    Download and install Python standalone using QGIS network manager.
+    Download and install Python standalone using KADAS network manager.
+    
+    Implements exponential backoff retry strategy (5, 10, 20, 40, 80s delays)
+    for network resilience in corporate environments (v0.6.5).
 
-    Uses QgsBlockingNetworkRequest to respect QGIS proxy settings.
+    Uses QgsBlockingNetworkRequest to respect KADAS proxy settings.
 
     Args:
         progress_callback: Function called with (percent, message) for progress updates
@@ -162,6 +190,67 @@ def download_python_standalone(
     if standalone_python_exists():
         _log("Python standalone already exists", Qgis.Info)
         return True, "Python standalone already installed"
+    
+    # Exponential backoff configuration (v0.6.5)
+    MAX_RETRIES = 5
+    BACKOFF_DELAYS = [5, 10, 20, 40, 80]  # seconds
+    
+    last_error = ""
+    
+    for attempt in range(MAX_RETRIES):
+        if cancel_check and cancel_check():
+            return False, "Download cancelled"
+        
+        if attempt > 0:
+            delay = BACKOFF_DELAYS[attempt - 1]
+            _log(
+                f"Download failed (attempt {attempt}/{MAX_RETRIES}), "
+                f"retrying in {delay}s...",
+                Qgis.Warning
+            )
+            if progress_callback:
+                progress_callback(0, f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})...")
+            
+            import time
+            time.sleep(delay)
+        
+        success, message = _download_python_standalone_attempt(progress_callback, cancel_check)
+        
+        if success:
+            return True, message
+        
+        last_error = message
+        _log(
+            f"Download attempt {attempt + 1}/{MAX_RETRIES} failed: {message}",
+            Qgis.Warning
+        )
+    
+    # All retries exhausted - provide firewall guidance
+    firewall_hint = (
+        "\n\nDownload failed after all retries. "
+        "This may indicate firewall or network restrictions.\n\n"
+        "Please ask your IT department to allow access to:\n"
+        "  - github.com/indygreg/python-build-standalone\n"
+        "Or manually place a Python installation in:\n"
+        f"  {STANDALONE_DIR}"
+    )
+    
+    _log(
+        f"All download attempts failed. Last error: {last_error}{firewall_hint}",
+        Qgis.Critical
+    )
+    
+    return False, f"{last_error}{firewall_hint}"
+
+
+def _download_python_standalone_attempt(
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None
+) -> Tuple[bool, str]:
+    """
+    Single download attempt (without retry logic).
+    Internal function called by download_python_standalone() with exponential backoff.
+    """
 
     url = get_download_url()
     python_version = get_python_full_version()
@@ -179,7 +268,7 @@ def download_python_standalone(
         if cancel_check and cancel_check():
             return False, "Download cancelled"
 
-        # Use QGIS network manager for proxy-aware downloads
+        # Use KADAS network manager for proxy-aware downloads
         request = QgsBlockingNetworkRequest()
         qurl = QUrl(url)
 
@@ -211,6 +300,13 @@ def download_python_standalone(
         # Write content to temp file
         with open(temp_path, 'wb') as f:
             f.write(content.data())
+
+        # Check for 0-byte corrupted download (v0.6.5)
+        file_size = os.path.getsize(temp_path)
+        if file_size == 0:
+            os.remove(temp_path)
+            _log("Downloaded Python archive is 0 bytes (corrupt)", Qgis.Critical)
+            return False, "Download corrupted (0 bytes)"
 
         _log(f"Download complete ({len(content)} bytes), extracting...", Qgis.Info)
 

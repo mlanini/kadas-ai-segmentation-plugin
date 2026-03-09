@@ -1,720 +1,720 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="fr_FR">
+<TS version="2.1" language="it_CH">
 <context>
     <name>AISegmentation</name>
     <!-- Welcome Section -->
     <message>
         <source>Welcome! Two quick steps to get started:</source>
-        <translation>Bienvenue ! Deux étapes rapides pour commencer :</translation>
+        <translation>Benvenuto! Due semplici passaggi per iniziare:</translation>
     </message>
     <message>
         <source>Install AI dependencies (~800MB)</source>
-        <translation>Installer les dépendances IA (~800 Mo)</translation>
+        <translation>Installa dipendenze IA (~800MB)</translation>
     </message>
     <message>
         <source>Download the segmentation model (~375MB)</source>
-        <translation>Télécharger le modèle de segmentation (~375 Mo)</translation>
+        <translation>Scarica il modello di segmentazione (~375MB)</translation>
     </message>
 
     <!-- Dependencies Section -->
     <message>
         <source>Step 1: AI Dependencies</source>
-        <translation>Étape 1 : Dépendances IA</translation>
+        <translation>Passo 1: Dipendenze IA</translation>
     </message>
     <message>
         <source>Checking if dependencies are installed...</source>
-        <translation>Vérification de l'installation des dépendances...</translation>
+        <translation>Verifica installazione dipendenze...</translation>
     </message>
     <message>
         <source>Not installed yet</source>
-        <translation>Pas encore installé</translation>
+        <translation>Non ancora installato</translation>
     </message>
     <message>
         <source>Dependencies</source>
-        <translation>Dépendances</translation>
+        <translation>Dipendenze</translation>
     </message>
     <message>
         <source>Checking dependencies...</source>
-        <translation>Vérification des dépendances...</translation>
+        <translation>Verifica dipendenze...</translation>
     </message>
     <message>
         <source>Install Dependencies</source>
-        <translation>Installer les dépendances</translation>
+        <translation>Installa dipendenze</translation>
     </message>
     <message>
         <source>Create isolated virtual environment and install required packages</source>
-        <translation>Créer un environnement virtuel isolé et installer les packages requis</translation>
+        <translation>Crea ambiente virtuale isolato e installa pacchetti richiesti</translation>
     </message>
     <message>
         <source>Download size: ~800MB</source>
-        <translation>Taille du téléchargement : ~800 Mo</translation>
+        <translation>Dimensione download: ~800MB</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation>Annuler</translation>
+        <translation>Annulla</translation>
     </message>
     <message>
         <source>Installing...</source>
-        <translation>Installation...</translation>
+        <translation>Installazione...</translation>
     </message>
     <message>
         <source>Installing dependencies...</source>
-        <translation>Installation des dépendances...</translation>
+        <translation>Installazione dipendenze...</translation>
     </message>
     <message>
         <source>Installation cancelled</source>
-        <translation>Installation annulée</translation>
+        <translation>Installazione annullata</translation>
     </message>
     <message>
         <source>Installation failed</source>
-        <translation>Échec de l'installation</translation>
+        <translation>Installazione fallita</translation>
     </message>
     <message>
         <source>Virtual environment ready</source>
-        <translation>Environnement virtuel prêt</translation>
+        <translation>Ambiente virtuale pronto</translation>
     </message>
     <message>
         <source>Verification failed:</source>
-        <translation>Échec de la vérification :</translation>
+        <translation>Verifica fallita:</translation>
     </message>
     <message>
         <source>Verification Failed</source>
-        <translation>Échec de la vérification</translation>
+        <translation>Verifica fallita</translation>
     </message>
     <message>
         <source>Virtual environment was created but verification failed:</source>
-        <translation>L'environnement virtuel a été créé mais la vérification a échoué :</translation>
+        <translation>L'ambiente virtuale è stato creato ma la verifica è fallita:</translation>
     </message>
     <message>
         <source>Please check the logs or try reinstalling.</source>
-        <translation>Vérifiez les logs ou réessayez l'installation.</translation>
+        <translation>Controlla i log o prova a reinstallare.</translation>
     </message>
     <message>
         <source>Unknown error</source>
-        <translation>Erreur inconnue</translation>
+        <translation>Errore sconosciuto</translation>
     </message>
     <message>
         <source>Installation Failed</source>
-        <translation>Échec de l'installation</translation>
+        <translation>Installazione fallita</translation>
     </message>
     <message>
         <source>Failed to install dependencies:</source>
-        <translation>Impossible d'installer les dépendances :</translation>
+        <translation>Impossibile installare le dipendenze:</translation>
     </message>
     <message>
         <source>Check the KADAS log panel (View → Panels → Log Messages) for detailed error information.</source>
-        <translation>Consultez le panneau de logs KADAS (Vue → Panneaux → Messages) pour plus de détails.</translation>
+        <translation>Controlla il pannello log di KADAS (Visualizza → Pannelli → Messaggi log) per informazioni dettagliate sull'errore.</translation>
     </message>
     <message>
         <source>Download ~800MB of AI dependencies?</source>
-        <translation>Télécharger ~800 Mo de dépendances IA ?</translation>
+        <translation>Scaricare ~800MB di dipendenze IA?</translation>
     </message>
     <message>
         <source>This takes a few minutes.</source>
-        <translation>Cela prend quelques minutes.</translation>
+        <translation>Richiede alcuni minuti.</translation>
     </message>
 
     <!-- Checkpoint/Model Section -->
     <message>
         <source>Step 2: Segmentation Model</source>
-        <translation>Étape 2 : Modèle de segmentation</translation>
+        <translation>Passo 2: Modello di segmentazione</translation>
     </message>
     <message>
         <source>Waiting for Step 1...</source>
-        <translation>En attente de l'étape 1...</translation>
+        <translation>In attesa del Passo 1...</translation>
     </message>
     <message>
         <source>Checking if model is installed...</source>
-        <translation>Vérification de l'installation du modèle...</translation>
+        <translation>Verifica installazione modello...</translation>
     </message>
     <message>
         <source>AI Segmentation Model</source>
-        <translation>Modèle AI Segmentation</translation>
+        <translation>Modello AI Segmentation</translation>
     </message>
     <message>
         <source>Checking model...</source>
-        <translation>Vérification du modèle...</translation>
+        <translation>Verifica modello...</translation>
     </message>
     <message>
         <source>Download AI Segmentation Model (~375MB)</source>
-        <translation>Télécharger le modèle AI Segmentation (~375 Mo)</translation>
+        <translation>Scarica modello AI Segmentation (~375MB)</translation>
     </message>
     <message>
         <source>Download the SAM checkpoint for segmentation</source>
-        <translation>Télécharger le checkpoint SAM pour la segmentation</translation>
+        <translation>Scarica il checkpoint SAM per la segmentazione</translation>
     </message>
     <message>
         <source>Downloading...</source>
-        <translation>Téléchargement...</translation>
+        <translation>Download...</translation>
     </message>
     <message>
         <source>Model downloading...</source>
-        <translation>Téléchargement du modèle...</translation>
+        <translation>Download modello...</translation>
     </message>
     <message>
         <source>Download cancelled</source>
-        <translation>Téléchargement annulé</translation>
+        <translation>Download annullato</translation>
     </message>
     <message>
         <source>Download Failed</source>
-        <translation>Échec du téléchargement</translation>
+        <translation>Download fallito</translation>
     </message>
     <message>
         <source>Failed to download model:</source>
-        <translation>Impossible de télécharger le modèle :</translation>
+        <translation>Impossibile scaricare il modello:</translation>
     </message>
     <message>
         <source>Please check your internet connection and try again.</source>
-        <translation>Vérifiez votre connexion internet et réessayez.</translation>
+        <translation>Controlla la connessione internet e riprova.</translation>
     </message>
 
     <!-- Activation Section -->
     <message>
         <source>Setup AI Segmentation by TerraLab</source>
-        <translation>Configuration AI Segmentation par TerraLab</translation>
+        <translation>Configura AI Segmentation by TerraLab</translation>
     </message>
     <message>
         <source>Unlock Plugin</source>
-        <translation>Activer le plugin</translation>
+        <translation>Sblocca plugin</translation>
     </message>
     <message>
         <source>Enter your email to receive updates and get a verification code.</source>
-        <translation>Entrez votre email pour recevoir les mises à jour et obtenir un code.</translation>
+        <translation>Inserisci la tua email per ricevere aggiornamenti e ottenere un codice di verifica.</translation>
     </message>
     <message>
         <source>Get my verification code</source>
-        <translation>Obtenir mon code</translation>
+        <translation>Ottieni il mio codice</translation>
     </message>
     <message>
         <source>Then paste your code:</source>
-        <translation>Puis collez votre code :</translation>
+        <translation>Poi incolla il tuo codice:</translation>
     </message>
     <message>
         <source>Code</source>
-        <translation>Code</translation>
+        <translation>Codice</translation>
     </message>
     <message>
         <source>Unlock</source>
-        <translation>Activer</translation>
+        <translation>Sblocca</translation>
     </message>
     <message>
         <source>Enter your code</source>
-        <translation>Entrez votre code</translation>
+        <translation>Inserisci il tuo codice</translation>
     </message>
     <message>
         <source>Unlocked!</source>
-        <translation>Activé !</translation>
+        <translation>Sbloccato!</translation>
     </message>
     <message>
         <source>Invalid code</source>
-        <translation>Code invalide</translation>
+        <translation>Codice non valido</translation>
     </message>
     <message>
         <source>Thanks for trying our plugin!</source>
-        <translation>Merci d'essayer notre plugin !</translation>
+        <translation>Grazie per provare il nostro plugin!</translation>
     </message>
     <message>
         <source>This plugin is in beta. We'd love to keep you updated when we release new versions and features.</source>
-        <translation>Ce plugin est en bêta. Nous aimerions vous tenir informé des nouvelles versions.</translation>
+        <translation>Questo plugin è in beta. Ci piacerebbe tenerti aggiornato quando rilasceremo nuove versioni e funzionalità.</translation>
     </message>
     <message>
         <source>Enter your email and you'll get a</source>
-        <translation>Entrez votre email pour recevoir un</translation>
+        <translation>Inserisci la tua email e riceverai un</translation>
     </message>
     <message>
         <source>Verification Code</source>
-        <translation>Code de vérification</translation>
+        <translation>Codice di verifica</translation>
     </message>
     <message>
         <source>to paste below.</source>
-        <translation>à coller ci-dessous.</translation>
+        <translation>da incollare qui sotto.</translation>
     </message>
     <message>
         <source>Paste your verification code:</source>
-        <translation>Collez votre code de vérification :</translation>
+        <translation>Incolla il tuo codice di verifica:</translation>
     </message>
     <message>
         <source>Enter your verification code</source>
-        <translation>Entrez votre code de vérification</translation>
+        <translation>Inserisci il tuo codice di verifica</translation>
     </message>
 
     <!-- Segmentation Section -->
     <message>
         <source>Select a Raster Layer to Segment:</source>
-        <translation>Sélectionnez un raster à segmenter :</translation>
+        <translation>Seleziona un layer raster da segmentare:</translation>
     </message>
     <message>
         <source>Select a file-based raster layer (GeoTIFF, etc.)</source>
-        <translation>Sélectionnez un raster local (GeoTIFF, etc.)</translation>
+        <translation>Seleziona un layer raster basato su file (GeoTIFF, ecc.)</translation>
     </message>
     <message>
         <source>No compatible raster found. Add a GeoTIFF or local image to your project.</source>
-        <translation>Aucun raster compatible. Ajoutez un GeoTIFF ou une image locale à votre projet.</translation>
+        <translation>Nessun raster compatibile trovato. Aggiungi un GeoTIFF o un'immagine locale al tuo progetto.</translation>
     </message>
     <message>
         <source>No compatible raster found. {count} layer(s) excluded (PNG/JPG without georeferencing). Use GeoTIFF format.</source>
-        <translation>Aucun raster compatible. {count} couche(s) exclue(s) (PNG/JPG sans géoréférencement). Utilisez le format GeoTIFF.</translation>
+        <translation>Nessun raster compatibile trovato. {count} layer esclusi (PNG/JPG senza georeferenziazione). Usa il formato GeoTIFF.</translation>
     </message>
     <message>
         <source>No compatible raster found. Add a GeoTIFF or georeferenced image to your project.</source>
-        <translation>Aucun raster compatible. Ajoutez un GeoTIFF ou une image géoréférencée à votre projet.</translation>
+        <translation>Nessun raster compatibile trovato. Aggiungi un GeoTIFF o un'immagine georeferenziata al tuo progetto.</translation>
     </message>
     <message>
         <source>Shortcuts: S (save polygon) · Enter (export to layer) · Ctrl+Z (undo) · Escape (clear)</source>
-        <translation>Raccourcis : S (sauvegarder polygone) · Entrée (exporter vers couche) · Ctrl+Z (annuler) · Échap (effacer)</translation>
+        <translation>Scorciatoie: S (salva poligono) · Invio (esporta in layer) · Ctrl+Z (annulla) · Esc (cancella)</translation>
     </message>
     <message>
         <source>Start AI Segmentation</source>
-        <translation>Démarrer AI Segmentation</translation>
+        <translation>Avvia AI Segmentation</translation>
     </message>
     <message>
         <source>Start segmentation (G)</source>
-        <translation>Démarrer la segmentation (G)</translation>
+        <translation>Avvia segmentazione (G)</translation>
     </message>
     <message>
         <source>Batch mode</source>
-        <translation>Mode Batch</translation>
+        <translation>Modalità Batch</translation>
     </message>
     <message>
         <source>Simple mode: One element per export.</source>
-        <translation>Mode simple : Un élément par export.</translation>
+        <translation>Modalità semplice: un elemento per esportazione.</translation>
     </message>
     <message>
         <source>Batch mode: Save multiple polygons, then export all together.</source>
-        <translation>Mode Batch : Sauvegardez plusieurs polygones, puis exportez-les ensemble.</translation>
+        <translation>Modalità Batch: salva più poligoni, poi esporta tutti insieme.</translation>
     </message>
     <message>
         <source>Mode can only be changed when segmentation is stopped.</source>
-        <translation>Le mode ne peut être changé qu'après arrêt de la segmentation.</translation>
+        <translation>La modalità può essere cambiata solo quando la segmentazione è interrotta.</translation>
     </message>
     <message>
         <source>Save polygon</source>
-        <translation>Sauvegarder le polygone</translation>
+        <translation>Salva poligono</translation>
     </message>
     <message>
         <source>Save current polygon to your session (S)</source>
-        <translation>Sauvegarder le polygone actuel dans votre session (S)</translation>
+        <translation>Salva il poligono corrente nella sessione (S)</translation>
     </message>
     <message>
         <source>Export to layer</source>
-        <translation>Exporter en couche</translation>
+        <translation>Esporta in layer</translation>
     </message>
     <message>
         <source>Export all saved polygons as a new vector layer (Enter)</source>
-        <translation>Exporter tous les polygones sauvegardés comme nouvelle couche vectorielle (Entrée)</translation>
+        <translation>Esporta tutti i poligoni salvati come nuovo layer vettoriale (Invio)</translation>
     </message>
     <message>
         <source>Export {count} polygon(s) as a new layer (Enter)</source>
-        <translation>Exporter {count} polygone(s) comme nouvelle couche (Entrée)</translation>
+        <translation>Esporta {count} poligono/i come nuovo layer (Invio)</translation>
     </message>
     <message>
         <source>Save at least one polygon first (S)</source>
-        <translation>Sauvegardez au moins un polygone d'abord (S)</translation>
+        <translation>Salva almeno un poligono prima (S)</translation>
     </message>
     <message>
         <source>Export polygon to layer (Enter)</source>
-        <translation>Exporter le polygone vers la couche (Entrée)</translation>
+        <translation>Esporta poligono in layer (Invio)</translation>
     </message>
     <message>
         <source>Place points to create a selection first</source>
-        <translation>Placez des points pour créer une sélection</translation>
+        <translation>Posiziona dei punti per creare una selezione prima</translation>
     </message>
     <message>
         <source>Undo last point</source>
-        <translation>Annuler le dernier point</translation>
+        <translation>Annulla ultimo punto</translation>
     </message>
     <message>
         <source>Remove last point (Ctrl+Z)</source>
-        <translation>Supprimer le dernier point (Ctrl+Z)</translation>
+        <translation>Rimuovi ultimo punto (Ctrl+Z)</translation>
     </message>
     <message>
         <source>Stop segmentation</source>
-        <translation>Arrêter la segmentation</translation>
+        <translation>Interrompi segmentazione</translation>
     </message>
     <message>
         <source>Exit segmentation without saving (Escape)</source>
-        <translation>Quitter sans sauvegarder (Échap)</translation>
+        <translation>Esci dalla segmentazione senza salvare (Esc)</translation>
     </message>
     <message>
         <source>Simple mode: one element per layer.</source>
-        <translation>Mode simple : un élément par couche.</translation>
+        <translation>Modalità semplice: un elemento per layer.</translation>
     </message>
     <message>
         <source>For multiple elements in one layer, use Batch mode.</source>
-        <translation>Pour plusieurs éléments dans une couche, utilisez le mode Batch.</translation>
+        <translation>Per più elementi in un layer, usa la modalità Batch.</translation>
     </message>
     <message>
         <source>Simple mode</source>
-        <translation>Mode simple</translation>
+        <translation>Modalità semplice</translation>
     </message>
     <message>
         <source>Select multiple elements, then export all together</source>
-        <translation>Sélectionnez plusieurs éléments, puis exportez-les ensemble</translation>
+        <translation>Seleziona più elementi, poi esporta tutti insieme</translation>
     </message>
     <message>
         <source>One element per export</source>
-        <translation>Un élément par export</translation>
+        <translation>Un elemento per esportazione</translation>
     </message>
     <message>
         <source>Batch mode: segment objects one by one, save all to same layer.</source>
-        <translation>Mode Batch : segmentez les objets un par un, sauvegardez-les tous dans la même couche.</translation>
+        <translation>Modalità Batch: segmenta oggetti uno per uno, salva tutti nello stesso layer.</translation>
     </message>
     <message>
         <source>(e.g. one building, one car, one tree)</source>
-        <translation>(ex. un bâtiment, une voiture, un arbre)</translation>
+        <translation>(es. un edificio, un'auto, un albero)</translation>
     </message>
     <message>
         <source>(e.g. all buildings in an area, all cars in a parking lot)</source>
-        <translation>(ex. tous les bâtiments d'une zone, toutes les voitures d'un parking)</translation>
+        <translation>(es. tutti gli edifici in un'area, tutte le auto in un parcheggio)</translation>
     </message>
     <message>
         <source>Export polygon to layer</source>
-        <translation>Exporter le polygone en couche</translation>
+        <translation>Esporta poligono in layer</translation>
     </message>
     <message>
         <source>Export polygon(s) to layer</source>
-        <translation>Exporter le(s) polygone(s) en couche</translation>
+        <translation>Esporta poligono/i in layer</translation>
     </message>
     <message>
         <source>Export polygon as a new vector layer (Enter)</source>
-        <translation>Exporter le polygone comme nouvelle couche vectorielle (Entrée)</translation>
+        <translation>Esporta poligono come nuovo layer vettoriale (Invio)</translation>
     </message>
 
     <!-- Refine Section -->
     <message>
         <source>Refine selection</source>
-        <translation>Affiner la sélection</translation>
+        <translation>Affina selezione</translation>
     </message>
     <message>
         <source>Expand/Contract:</source>
-        <translation>Dilater/Éroder :</translation>
+        <translation>Espandi/Contrai:</translation>
     </message>
     <message>
         <source>Positive = expand outward, Negative = shrink inward</source>
-        <translation>Positif = dilater, Négatif = éroder</translation>
+        <translation>Positivo = espandi verso l'esterno, Negativo = contrai verso l'interno</translation>
     </message>
     <message>
         <source>Simplify outline:</source>
-        <translation>Simplifier le contour :</translation>
+        <translation>Semplifica contorno:</translation>
     </message>
     <message>
         <source>Reduce small variations in the outline (0 = no change)</source>
-        <translation>Réduire les petites variations du contour (0 = aucun changement)</translation>
+        <translation>Riduci piccole variazioni nel contorno (0 = nessuna modifica)</translation>
     </message>
     <message>
         <source>Fill holes</source>
-        <translation>Combler les trous</translation>
+        <translation>Riempi buchi</translation>
     </message>
     <message>
         <source>Fill interior holes in the selection</source>
-        <translation>Combler les trous intérieurs de la sélection</translation>
+        <translation>Riempi i buchi interni nella selezione</translation>
     </message>
     <message>
         <source>Min. region size:</source>
-        <translation>Taille min. région :</translation>
+        <translation>Dimensione min. regione:</translation>
     </message>
     <message>
         <source>Remove disconnected regions smaller than this area (in pixels²).</source>
-        <translation>Supprimer les régions déconnectées plus petites que cette surface (en pixels²).</translation>
+        <translation>Rimuovi regioni disconnesse più piccole di quest'area (in pixel²).</translation>
     </message>
     <message>
         <source>Example: 100 = ~10x10 pixel regions, 900 = ~30x30.</source>
-        <translation>Exemple : 100 = régions ~10x10 px, 900 = ~30x30.</translation>
+        <translation>Esempio: 100 = regioni ~10x10 pixel, 900 = ~30x30.</translation>
     </message>
     <message>
         <source>0 = keep all.</source>
-        <translation>0 = tout garder.</translation>
+        <translation>0 = mantieni tutto.</translation>
     </message>
 
     <!-- Instructions -->
     <message>
         <source>Click on the element you want to segment:</source>
-        <translation>Cliquez sur l'élément à segmenter :</translation>
+        <translation>Clicca sull'elemento che vuoi segmentare:</translation>
     </message>
     <message>
         <source>Left-click to select</source>
-        <translation>Clic gauche pour sélectionner</translation>
+        <translation>Click sinistro per selezionare</translation>
     </message>
     <message>
         <source>{count} point(s)</source>
-        <translation>{count} point(s)</translation>
+        <translation>{count} punto/i</translation>
     </message>
     <message>
         <source>Left-click to add more</source>
-        <translation>Clic gauche pour en ajouter</translation>
+        <translation>Click sinistro per aggiungerne</translation>
     </message>
     <message>
         <source>Right-click to exclude from selection</source>
-        <translation>Clic droit pour exclure de la sélection</translation>
+        <translation>Click destro per escludere dalla selezione</translation>
     </message>
     <message>
         <source>{count} adjustment(s)</source>
-        <translation>{count} ajustement(s)</translation>
+        <translation>{count} aggiustamento/i</translation>
     </message>
     <message>
         <source>{count} polygon(s) saved</source>
-        <translation>{count} polygone(s) sauvegardé(s)</translation>
+        <translation>{count} poligono/i salvato/i</translation>
     </message>
     <message>
         <source>Refine selection or save polygon</source>
-        <translation>Affiner la sélection ou sauvegarder le polygone</translation>
+        <translation>Affina selezione o salva poligono</translation>
     </message>
     <message>
         <source>Refine selection or export polygon</source>
-        <translation>Affiner la sélection ou exporter le polygone</translation>
+        <translation>Affina selezione o esporta poligono</translation>
     </message>
 
     <!-- Encoding -->
     <message>
         <source>Cancel Encoding?</source>
-        <translation>Annuler l'encodage ?</translation>
+        <translation>Annullare codifica?</translation>
     </message>
     <message>
         <source>Are you sure you want to cancel?</source>
-        <translation>Êtes-vous sûr de vouloir annuler ?</translation>
+        <translation>Sei sicuro di voler annullare?</translation>
     </message>
     <message>
         <source>Once encoding is complete, it's cached permanently.</source>
-        <translation>Une fois l'encodage terminé, il est mis en cache définitivement.</translation>
+        <translation>Una volta completata la codifica, viene memorizzata in cache permanentemente.</translation>
     </message>
     <message>
         <source>You'll never need to wait for this image again.</source>
-        <translation>Vous n'aurez plus jamais à attendre pour cette image.</translation>
+        <translation>Non dovrai più aspettare per questa immagine.</translation>
     </message>
     <message>
         <source>Encoding this image for AI segmentation...</source>
-        <translation>Encodage de cette image pour AI Segmentation...</translation>
+        <translation>Codifica di questa immagine per AI Segmentation...</translation>
     </message>
     <message>
         <source>This is stored permanently, no waiting next time :)</source>
-        <translation>Stocké définitivement, plus d'attente la prochaine fois :)</translation>
+        <translation>Memorizzata permanentemente, nessuna attesa la prossima volta :)</translation>
     </message>
     <message>
         <source>Encoding Failed</source>
-        <translation>Échec de l'encodage</translation>
+        <translation>Codifica fallita</translation>
     </message>
     <message>
         <source>Failed to encode raster:</source>
-        <translation>Impossible d'encoder le raster :</translation>
+        <translation>Impossibile codificare il raster:</translation>
     </message>
 
     <!-- Dialogs -->
     <message>
         <source>Not Ready</source>
-        <translation>Pas prêt</translation>
+        <translation>Non pronto</translation>
     </message>
     <message>
         <source>Please wait for the SAM model to load.</source>
-        <translation>Veuillez attendre le chargement du modèle SAM.</translation>
+        <translation>Attendi il caricamento del modello SAM.</translation>
     </message>
     <message>
         <source>Load Failed</source>
-        <translation>Échec du chargement</translation>
+        <translation>Caricamento fallito</translation>
     </message>
     <message>
         <source>Failed to load feature data:</source>
-        <translation>Impossible de charger les données :</translation>
+        <translation>Impossibile caricare i dati delle feature:</translation>
     </message>
     <message>
         <source>Layer Creation Failed</source>
-        <translation>Échec de création de la couche</translation>
+        <translation>Creazione layer fallita</translation>
     </message>
     <message>
         <source>Could not create the output layer.</source>
-        <translation>Impossible de créer la couche de sortie.</translation>
+        <translation>Impossibile creare il layer di output.</translation>
     </message>
     <message>
         <source>Export Failed</source>
-        <translation>Échec de l'export</translation>
+        <translation>Esportazione fallita</translation>
     </message>
     <message>
         <source>Could not save layer to file:</source>
-        <translation>Impossible de sauvegarder la couche :</translation>
+        <translation>Impossibile salvare il layer nel file:</translation>
     </message>
     <message>
         <source>Layer was saved but could not be loaded:</source>
-        <translation>La couche a été sauvegardée mais n'a pas pu être chargée :</translation>
+        <translation>Il layer è stato salvato ma non è stato possibile caricarlo:</translation>
     </message>
     <message>
         <source>Exit Segmentation</source>
-        <translation>Quitter la segmentation</translation>
+        <translation>Esci dalla segmentazione</translation>
     </message>
     <message>
         <source>Exit segmentation?</source>
-        <translation>Quitter la segmentation ?</translation>
+        <translation>Uscire dalla segmentazione?</translation>
     </message>
     <message>
         <source>The current selection will be lost.</source>
-        <translation>La sélection actuelle sera perdue.</translation>
+        <translation>La selezione corrente verrà persa.</translation>
     </message>
     <message>
         <source>Exit Segmentation?</source>
-        <translation>Quitter la segmentation ?</translation>
+        <translation>Uscire dalla segmentazione?</translation>
     </message>
     <message>
         <source>You have {count} unsaved polygon(s).</source>
-        <translation>Vous avez {count} polygone(s) non exporté(s).</translation>
+        <translation>Hai {count} poligono/i non esportato/i.</translation>
     </message>
     <message>
         <source>Discard and exit segmentation?</source>
-        <translation>Abandonner et quitter la segmentation ?</translation>
+        <translation>Scartare e uscire dalla segmentazione?</translation>
     </message>
     <message>
         <source>You have an unsaved selection.</source>
-        <translation>Vous avez une sélection non sauvegardée.</translation>
+        <translation>Hai una selezione non salvata.</translation>
     </message>
     <message>
         <source>Stop Segmentation?</source>
-        <translation>Arrêter la segmentation ?</translation>
+        <translation>Interrompere la segmentazione?</translation>
     </message>
     <message>
         <source>This will discard {count} polygon(s).</source>
-        <translation>Cela va supprimer {count} polygone(s).</translation>
+        <translation>Questo scarterà {count} poligono/i.</translation>
     </message>
     <message>
         <source>Use 'Export to layer' to keep them.</source>
-        <translation>Utilisez « Exporter en couche » pour les conserver.</translation>
+        <translation>Usa 'Esporta in layer' per mantenerli.</translation>
     </message>
     <message>
         <source>Unsaved Polygons</source>
-        <translation>Polygones non exportés</translation>
+        <translation>Poligoni non esportati</translation>
     </message>
     <message>
         <source>Export before changing mode?</source>
-        <translation>Exporter avant de changer de mode ?</translation>
+        <translation>Esportare prima di cambiare modalità?</translation>
     </message>
     <message>
         <source>Delete all saved polygons?</source>
-        <translation>Supprimer tous les polygones sauvegardés ?</translation>
+        <translation>Eliminare tutti i poligoni salvati?</translation>
     </message>
     <message>
         <source>This will delete all saved polygons.</source>
-        <translation>Cela va supprimer tous les polygones sauvegardés.</translation>
+        <translation>Questo eliminerà tutti i poligoni salvati.</translation>
     </message>
     <message>
         <source>Do you want to continue?</source>
-        <translation>Voulez-vous continuer ?</translation>
+        <translation>Vuoi continuare?</translation>
     </message>
     <message>
         <source>You have {count} saved polygon(s).</source>
-        <translation>Vous avez {count} polygone(s) sauvegardé(s).</translation>
+        <translation>Hai {count} poligono/i salvato/i.</translation>
     </message>
     <message>
         <source>Edit saved polygon</source>
-        <translation>Modifier un polygone sauvegardé</translation>
+        <translation>Modifica poligono salvato</translation>
     </message>
     <message>
         <source>Warning: you are about to edit an already saved polygon.</source>
-        <translation>Attention : vous allez modifier un polygone déjà sauvegardé.</translation>
+        <translation>Attenzione: stai per modificare un poligono già salvato.</translation>
     </message>
 
     <!-- Tutorial -->
     <message>
         <source>Batch mode activated.</source>
-        <translation>Mode Batch activé.</translation>
+        <translation>Modalità Batch attivata.</translation>
     </message>
     <message>
         <source>Watch the tutorial</source>
-        <translation>Voir le tutoriel</translation>
+        <translation>Guarda il tutorial</translation>
     </message>
     <message>
         <source>to learn how to use it.</source>
-        <translation>pour apprendre à l'utiliser.</translation>
+        <translation>per imparare ad usarlo.</translation>
     </message>
     <message>
         <source>New to AI Segmentation?</source>
-        <translation>Nouveau sur AI Segmentation ?</translation>
+        <translation>Nuovo ad AI Segmentation?</translation>
     </message>
     <message>
         <source>Watch our tutorial</source>
-        <translation>Voir notre tutoriel</translation>
+        <translation>Guarda il nostro tutorial</translation>
     </message>
 
     <!-- About Section -->
     <message>
         <source>Report a bug</source>
-        <translation>Signaler un bug</translation>
+        <translation>Segnala un bug</translation>
     </message>
     <message>
         <source>Tutorial &amp; Docs</source>
-        <translation>Tutoriel &amp; Docs</translation>
+        <translation>Tutorial &amp; Docs</translation>
     </message>
     <message>
         <source>Tutorials</source>
-        <translation>Tutoriels</translation>
+        <translation>Tutorial</translation>
     </message>
     <message>
         <source>Documentation</source>
-        <translation>Documentation</translation>
+        <translation>Documentazione</translation>
     </message>
     <message>
         <source>Contact Us</source>
-        <translation>Nous contacter</translation>
+        <translation>Contattaci</translation>
     </message>
     <message>
         <source>Something not working? Copy your logs and send them to us, we'll look into it :)</source>
-        <translation>Quelque chose ne fonctionne pas ? Copiez vos logs et envoyez-les nous, on regarde ça :)</translation>
+        <translation>Qualcosa non funziona? Copia i tuoi log e inviaceli, ci guarderemo :)</translation>
     </message>
 
     <!-- Tooltip -->
     <message>
         <source>Segment objects on raster images using AI</source>
-        <translation>Segmenter des objets sur des images raster avec l'IA</translation>
+        <translation>Segmenta oggetti su immagini raster usando l'IA</translation>
     </message>
 
     <!-- Error Report Dialog -->
     <message>
         <source>Copy your logs with the button below and send them to our email so we can fix your issue :)</source>
-        <translation>Copiez vos logs avec le bouton ci-dessous et envoyez-les à notre email pour qu'on puisse corriger votre problème :)</translation>
+        <translation>Copia i tuoi log con il pulsante qui sotto e inviaceli via email così possiamo risolvere il tuo problema :)</translation>
     </message>
     <message>
         <source>Copy log to clipboard</source>
-        <translation>Copier le log</translation>
+        <translation>Copia log negli appunti</translation>
     </message>
     <message>
         <source>Copy email address</source>
-        <translation>Copier l'adresse email</translation>
+        <translation>Copia indirizzo email</translation>
     </message>
     <message>
         <source>Copied!</source>
-        <translation>Copié !</translation>
+        <translation>Copiato!</translation>
     </message>
     <message>
         <source>Email copied!</source>
-        <translation>Email copié !</translation>
+        <translation>Email copiata!</translation>
     </message>
 
     <!-- SSL / Antivirus error titles -->
     <message>
         <source>SSL Certificate Error</source>
-        <translation>Erreur de certificat SSL</translation>
+        <translation>Errore certificato SSL</translation>
     </message>
     <message>
         <source>Installation Blocked</source>
-        <translation>Installation bloquée</translation>
+        <translation>Installazione bloccata</translation>
     </message>
 
     <!-- CUDA / Device Info -->
     <message>
         <source>Enable NVIDIA GPU acceleration (CUDA)</source>
-        <translation>Activer l'accélération GPU NVIDIA (CUDA)</translation>
+        <translation>Abilita accelerazione GPU NVIDIA (CUDA)</translation>
     </message>
     <message>
         <source>CUDA requires an NVIDIA GPU. Download size: ~2.5GB (vs ~600MB without CUDA).</source>
-        <translation>CUDA nécessite un GPU NVIDIA. Taille du téléchargement : ~2,5 Go (vs ~600 Mo sans CUDA).</translation>
+        <translation>CUDA richiede una GPU NVIDIA. Dimensione download: ~2.5GB (vs ~600MB senza CUDA).</translation>
     </message>
     <message>
         <source>Detected: {gpu_name}</source>
-        <translation>Détecté : {gpu_name}</translation>
+        <translation>Rilevata: {gpu_name}</translation>
     </message>
     <message>
         <source>Optional: speeds up segmentation. Requires ~2.5GB of disk space.</source>
-        <translation>Optionnel : accélère la segmentation. Nécessite ~2,5 Go d'espace disque.</translation>
+        <translation>Opzionale: velocizza la segmentazione. Richiede ~2.5GB di spazio su disco.</translation>
     </message>
     <message>
         <source>GPU not compatible with installed CUDA version, using CPU...</source>
-        <translation>GPU non compatible avec la version CUDA installée, utilisation du CPU...</translation>
+        <translation>GPU non compatibile con la versione CUDA installata, uso CPU...</translation>
     </message>
 </context>
 </TS>

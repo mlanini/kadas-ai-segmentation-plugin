@@ -103,8 +103,8 @@
         <translation>Falha ao instalar dependências:</translation>
     </message>
     <message>
-        <source>Check the QGIS log panel (View → Panels → Log Messages) for detailed error information.</source>
-        <translation>Verifique o painel de logs do QGIS (Ver → Painéis → Mensagens de Log) para informações detalhadas do erro.</translation>
+        <source>Check the KADAS log panel (View → Panels → Log Messages) for detailed error information.</source>
+        <translation>Verifique o painel de registro do KADAS (Exibir → Painéis → Mensagens de registro) para obter informações detalhadas sobre o erro.</translation>
     </message>
     <message>
         <source>Download ~800MB of AI dependencies?</source>

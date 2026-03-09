@@ -3,37 +3,213 @@ import sys
 import os
 import shutil
 import platform
+import tempfile
+import time
+import re
+import hashlib
 from typing import Tuple, Optional, Callable, List
 
 from qgis.core import QgsMessageLog, Qgis
+
+from .model_config import SAM_PACKAGE, TORCH_MIN, TORCHVISION_MIN, USE_SAM2
 
 
 PLUGIN_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = PLUGIN_ROOT_DIR  # src/ directory
 PYTHON_VERSION = f"py{sys.version_info.major}.{sys.version_info.minor}"
-VENV_DIR = os.path.join(PLUGIN_ROOT_DIR, f'venv_{PYTHON_VERSION}')
+
+# Support custom cache directory via environment variable (for corporate environments)
+# AI_SEGMENTATION_CACHE_DIR allows IT admins to specify a directory with write permissions
+CACHE_DIR = os.environ.get("AI_SEGMENTATION_CACHE_DIR")
+if not CACHE_DIR:
+    # Default locations if environment variable not set
+    if sys.platform == "win32":
+        CACHE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "kadas_ai_segmentation")
+    else:
+        CACHE_DIR = os.path.expanduser("~/.kadas_ai_segmentation")
+
+VENV_DIR = os.path.join(CACHE_DIR, f'venv_{PYTHON_VERSION}')
 LIBS_DIR = os.path.join(PLUGIN_ROOT_DIR, 'libs')
 
 REQUIRED_PACKAGES = [
     ("numpy", ">=1.26.0,<2.0.0"),
-    ("torch", ">=2.0.0"),
-    ("torchvision", ">=0.15.0"),
-    ("segment-anything", ">=1.0"),
+    ("torch", TORCH_MIN),
+    ("torchvision", TORCHVISION_MIN),
+    SAM_PACKAGE,
     ("pandas", ">=1.3.0"),
     ("rasterio", ">=1.3.0"),
 ]
+
+DEPS_HASH_FILE = os.path.join(VENV_DIR, "deps_hash.txt")
+CUDA_FLAG_FILE = os.path.join(VENV_DIR, "cuda_installed.txt")
+
+# Bump this when install logic changes significantly (e.g., --no-cache-dir,
+# new retry strategies) to force a dependency re-install on plugin update.
+# This invalidates the deps hash so users with stale cuda_fallback flags
+# get a clean retry with the improved install logic.
+_INSTALL_LOGIC_VERSION = "3"
+
+# Bumped independently of _INSTALL_LOGIC_VERSION so only users with a stale
+# cuda_fallback flag get a targeted CUDA retry — without forcing a full
+# dependency reinstall for everyone.  Increment this whenever the CUDA
+# install logic is fixed in a way that makes a previous fallback worth
+# retrying (e.g. adding --force-reinstall to overcome pip version skipping).
+_CUDA_LOGIC_VERSION = "3"
 
 
 def _log(message: str, level=Qgis.Info):
     QgsMessageLog.logMessage(message, "AI Segmentation", level=level)
 
 
+def _get_permission_error_help() -> str:
+    """Get platform-specific instructions for setting AI_SEGMENTATION_CACHE_DIR.
+    
+    Provides actionable guidance for users in corporate environments with restricted
+    folder permissions. Instructions show how to set the environment variable on
+    Windows, macOS, and Linux.
+    
+    Returns:
+        Multi-line help message with platform-specific steps.
+    """
+    if sys.platform == "win32":
+        return """Installation failed due to restricted folder permissions.
+
+To install dependencies in a custom directory:
+1. Open Windows System Settings
+2. Search for "Environment Variables" and click "Edit environment variables for your account"
+3. Click "New" under User variables
+4. Variable name: AI_SEGMENTATION_CACHE_DIR
+5. Variable value: D:\\MyPlugins\\kadas_ai_segmentation
+   (choose a folder where you have write permissions)
+6. Click OK to save
+7. Restart KADAS
+8. Try installing again
+
+If you need help choosing a suitable directory, contact your IT department.
+
+Current restricted location: {}""".format(CACHE_DIR)
+    
+    elif sys.platform == "darwin":
+        return """Installation failed due to restricted folder permissions.
+
+To install dependencies in a custom directory:
+1. Open Terminal (Applications > Utilities > Terminal)
+2. Run this command:
+   echo 'export AI_SEGMENTATION_CACHE_DIR="$HOME/MyPlugins/kadas_ai"' >> ~/.zshrc
+3. Close Terminal and restart KADAS
+4. Try installing again
+
+Note: If you use bash instead of zsh, replace ~/.zshrc with ~/.bash_profile
+
+Current restricted location: {}""".format(CACHE_DIR)
+    
+    else:  # Linux
+        return """Installation failed due to restricted folder permissions.
+
+To install dependencies in a custom directory:
+1. Open Terminal
+2. Run this command:
+   echo 'export AI_SEGMENTATION_CACHE_DIR="$HOME/myplugins/kadas_ai"' >> ~/.bashrc
+3. Close Terminal and restart KADAS
+4. Try installing again
+
+Note: If you use zsh, replace ~/.bashrc with ~/.zshrc
+
+Current restricted location: {}""".format(CACHE_DIR)
+
+
+def _write_cuda_flag(value: str):
+    """Write CUDA flag to venv directory (e.g., 'cpu_only', 'cuda_fallback:3', 'cuda')."""
+    os.makedirs(VENV_DIR, exist_ok=True)
+    with open(CUDA_FLAG_FILE, "w", encoding="utf-8") as f:
+        f.write(value)
+
+
+def _read_cuda_flag() -> Optional[str]:
+    """Read CUDA flag from venv directory."""
+    if not os.path.exists(CUDA_FLAG_FILE):
+        return None
+    with open(CUDA_FLAG_FILE, "r", encoding="utf-8") as f:
+        return f.read().strip()
+
+
+def _read_cuda_fallback_version() -> Optional[str]:
+    """Read CUDA fallback version from cuda_installed.txt.
+    Returns '1', '2', '3' etc. if cuda_fallback is versioned, else None."""
+    flag = _read_cuda_flag()
+    if flag and flag.startswith("cuda_fallback:"):
+        return flag.split(":", 1)[1]
+    return None
+
+
+def needs_cuda_upgrade() -> bool:
+    """Check if we should re-attempt CUDA installation.
+
+    Re-attempts CUDA if:
+    1. cuda_fallback flag exists (previous CUDA install failed), AND
+    2. The fallback version is older than the current CUDA logic version
+
+    This allows us to trigger a new CUDA attempt after plugin updates
+    that fix CUDA installation issues, without forcing a full dependency
+    reinstall for everyone.
+
+    Returns:
+        True if we should retry CUDA install (clears cuda_fallback flag)
+        False otherwise
+    """
+    flag = _read_cuda_flag()
+    if not flag or not flag.startswith("cuda_fallback:"):
+        return False
+
+    old_version = _read_cuda_fallback_version()
+    if old_version is None:
+        return False
+
+    try:
+        if int(old_version) < int(_CUDA_LOGIC_VERSION):
+            _log(
+                "CUDA logic updated (v{} -> v{}), will retry GPU acceleration".format(
+                    old_version, _CUDA_LOGIC_VERSION
+                ),
+                Qgis.Info,
+            )
+            os.remove(CUDA_FLAG_FILE)
+            return True
+    except ValueError:
+        pass
+
+    return False
+
+
+def _compute_deps_hash() -> str:
+    """Compute MD5 hash of dependency specs + install logic version.
+    If this changes, dependencies need to be reinstalled."""
+    specs = [f"{name}{version}" for name, version in REQUIRED_PACKAGES]
+    combined = "|".join(specs) + f"|logic_v{_INSTALL_LOGIC_VERSION}"
+    return hashlib.md5(combined.encode(), usedforsecurity=False).hexdigest()
+
+
+def _read_deps_hash() -> Optional[str]:
+    """Read stored deps hash from the venv directory."""
+    if not os.path.exists(DEPS_HASH_FILE):
+        return None
+    with open(DEPS_HASH_FILE, "r", encoding="utf-8") as f:
+        return f.read().strip()
+
+
+def _write_deps_hash():
+    """Write the current deps hash to the venv directory."""
+    os.makedirs(VENV_DIR, exist_ok=True)
+    with open(DEPS_HASH_FILE, "w", encoding="utf-8") as f:
+        f.write(_compute_deps_hash())
+
+
 def _log_system_info():
     """Log system information for debugging installation issues."""
     try:
-        qgis_version = Qgis.QGIS_VERSION
+        kadas_version = Qgis.QGIS_VERSION
     except Exception:
-        qgis_version = "Unknown"
+        kadas_version = "Unknown"
 
     info_lines = [
         "=" * 50,
@@ -41,7 +217,7 @@ def _log_system_info():
         f"  OS: {sys.platform} ({platform.system()} {platform.release()})",
         f"  Architecture: {platform.machine()}",
         f"  Python: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        f"  QGIS: {qgis_version}",
+        f"  KADAS: {kadas_version}",
         "=" * 50,
     ]
     for line in info_lines:
@@ -68,9 +244,9 @@ def _check_rosetta_warning() -> Optional[str]:
             )
             if "Apple" in result.stdout:
                 return (
-                    "Warning: QGIS is running under Rosetta (x86_64 emulation) "
+                    "Warning: KADAS is running under Rosetta (x86_64 emulation) "
                     "on Apple Silicon. This may cause compatibility issues. "
-                    "Consider using the native ARM64 version of QGIS for best performance."
+                    "Consider using the native ARM64 version of KADAS for best performance."
                 )
         except Exception:
             pass
@@ -210,7 +386,7 @@ def _get_ssl_error_help() -> str:
         "Please try:\n"
         "  1. Ask your IT team to whitelist: pypi.org, "
         "pypi.python.org, files.pythonhosted.org\n"
-        "  2. Check your proxy settings in QGIS "
+        "  2. Check your proxy settings in KADAS "
         "(Settings > Options > Network)\n"
         "  3. If using a VPN, try disconnecting temporarily"
     )
@@ -240,7 +416,7 @@ def _get_pip_antivirus_help(venv_dir: str) -> str:
         "  1. Temporarily disable real-time antivirus scanning\n"
         "  2. Add an exclusion for the plugin folder:\n"
         "     {}\n"
-        "  3. Run QGIS as administrator (right-click > Run as administrator)\n"
+        "  3. Run KADAS as administrator (right-click > Run as administrator)\n"
         "  4. Try the installation again"
     ).format(venv_dir)
 
@@ -275,8 +451,40 @@ def _get_crash_help(venv_dir: str) -> str:
         "  2. Add an exclusion for the plugin folder:\n"
         "     {}\n"
         "  3. Click 'Reinstall Dependencies' to recreate the environment\n"
-        "  4. If the issue persists, run QGIS as administrator"
+        "  4. If the issue persists, run KADAS as administrator"
     ).format(venv_dir)
+
+
+def cleanup_old_venv_directories():
+    """Remove old venv directories that were created inside the plugin folder.
+
+    This is called on plugin startup to clean up legacy installations
+    that used the old venv location (inside the plugin directory).
+    New installations use ~/.kadas_ai_segmentation/venv_py3.x/
+    """
+    try:
+        old_venv_pattern = os.path.join(PLUGIN_ROOT_DIR, "venv_py*")
+        import glob
+        for old_venv in glob.glob(old_venv_pattern):
+            if os.path.isdir(old_venv):
+                _log(f"Removing old venv directory: {old_venv}", Qgis.Info)
+                shutil.rmtree(old_venv)
+    except Exception as e:
+        _log(f"Failed to cleanup old venv directories: {e}", Qgis.Warning)
+
+
+def cleanup_old_libs():
+    """Remove old libs/ directory from plugin folder.
+
+    This is called on plugin startup to clean up legacy installations
+    that used the libs/ directory for dependencies.
+    """
+    if os.path.exists(LIBS_DIR):
+        try:
+            _log(f"Removing old libs directory: {LIBS_DIR}", Qgis.Info)
+            shutil.rmtree(LIBS_DIR)
+        except Exception as e:
+            _log(f"Failed to remove libs directory: {e}", Qgis.Warning)
 
 
 def get_venv_dir() -> str:
@@ -290,7 +498,7 @@ def get_venv_site_packages(venv_dir: str = None) -> str:
     if sys.platform == "win32":
         return os.path.join(venv_dir, "Lib", "site-packages")
     else:
-        # Detect actual Python version in venv (may differ from QGIS Python)
+        # Detect actual Python version in venv (may differ from KADAS Python)
         lib_dir = os.path.join(venv_dir, "lib")
         if os.path.exists(lib_dir):
             for entry in os.listdir(lib_dir):
@@ -299,7 +507,7 @@ def get_venv_site_packages(venv_dir: str = None) -> str:
                     if os.path.exists(site_packages):
                         return site_packages
 
-        # Fallback to QGIS Python version (for new venv creation)
+        # Fallback to KADAS Python version (for new venv creation)
         py_version = f"python{sys.version_info.major}.{sys.version_info.minor}"
         return os.path.join(venv_dir, "lib", py_version, "site-packages")
 
@@ -342,16 +550,43 @@ def get_venv_pip_path(venv_dir: str = None) -> str:
         venv_dir = VENV_DIR
 
     if sys.platform == "win32":
-        return os.path.join(venv_dir, "Scripts", "pip.exe")
+        pip_path = os.path.join(venv_dir, "Scripts", "pip.exe")
     else:
-        return os.path.join(venv_dir, "bin", "pip")
+        pip_path = os.path.join(venv_dir, "bin", "pip")
+    
+    # For manual folders, pip might not exist - return python -m pip instead
+    if not os.path.exists(pip_path):
+        return get_venv_python_path(venv_dir)  # Will use python -m pip
+    
+    return pip_path
 
 
-def _get_qgis_python() -> Optional[str]:
+def is_manual_venv_folder(venv_dir: str = None) -> bool:
+    """Check if this is a manual folder (no pip.exe) created to bypass Group Policy."""
+    if venv_dir is None:
+        venv_dir = VENV_DIR
+    
+    # Check if pyvenv.cfg mentions "Manual folder"
+    pyvenv_cfg = os.path.join(venv_dir, "pyvenv.cfg")
+    if os.path.exists(pyvenv_cfg):
+        try:
+            with open(pyvenv_cfg, "r") as f:
+                content = f.read()
+                if "Manual folder" in content or "Group Policy bypass" in content:
+                    return True
+        except:
+            pass
+    
+    # Also check if Scripts/pip.exe doesn't exist (manual folder indicator)
+    pip_path = os.path.join(venv_dir, "Scripts", "pip.exe") if sys.platform == "win32" else os.path.join(venv_dir, "bin", "pip")
+    return not os.path.exists(pip_path)
+
+
+def _get_kadas_python() -> Optional[str]:
     """
-    Get the path to QGIS's bundled Python on Windows.
+    Get the path to KADAS's bundled Python on Windows.
 
-    QGIS ships with a signed Python interpreter. This is used as a fallback
+    KADAS ships with a signed Python interpreter. This is used as a fallback
     when the standalone Python download is blocked by anti-malware software.
 
     Returns the path to the Python executable, or None if not found/not Windows.
@@ -359,14 +594,14 @@ def _get_qgis_python() -> Optional[str]:
     if sys.platform != "win32":
         return None
 
-    # QGIS on Windows bundles Python under sys.prefix
+    # KADAS on Windows bundles Python under sys.prefix
     python_path = os.path.join(sys.prefix, "python.exe")
     if not os.path.exists(python_path):
-        # Some QGIS installs place it under a python3 name
+        # Some KADAS installs place it under a python3 name
         python_path = os.path.join(sys.prefix, "python3.exe")
 
     if not os.path.exists(python_path):
-        _log("QGIS bundled Python not found at sys.prefix", Qgis.Warning)
+        _log("KADAS bundled Python not found at sys.prefix", Qgis.Warning)
         return None
 
     # Verify it can execute
@@ -383,13 +618,13 @@ def _get_qgis_python() -> Optional[str]:
             env=env, startupinfo=startupinfo,
         )
         if result.returncode == 0:
-            _log(f"QGIS Python verified: {result.stdout.strip()}", Qgis.Info)
+            _log(f"KADAS Python verified: {result.stdout.strip()}", Qgis.Info)
             return python_path
         else:
-            _log(f"QGIS Python failed verification: {result.stderr}", Qgis.Warning)
+            _log(f"KADAS Python failed verification: {result.stderr}", Qgis.Warning)
             return None
     except Exception as e:
-        _log(f"QGIS Python verification error: {e}", Qgis.Warning)
+        _log(f"KADAS Python verification error: {e}", Qgis.Warning)
         return None
 
 
@@ -398,7 +633,7 @@ def _get_system_python() -> str:
     Get the path to the Python executable for creating venvs.
 
     Uses the standalone Python downloaded by python_manager.
-    On Windows, falls back to QGIS's bundled Python if standalone is unavailable
+    On Windows, falls back to KADAS's bundled Python if standalone is unavailable
     (e.g. when anti-malware blocks the standalone download).
     """
     from .python_manager import standalone_python_exists, get_standalone_python_path
@@ -408,15 +643,15 @@ def _get_system_python() -> str:
         _log(f"Using standalone Python: {python_path}", Qgis.Info)
         return python_path
 
-    # On Windows, try QGIS's bundled Python as fallback
+    # On Windows, try KADAS's bundled Python as fallback
     if sys.platform == "win32":
-        qgis_python = _get_qgis_python()
-        if qgis_python:
+        kadas_python = _get_kadas_python()
+        if kadas_python:
             _log(
-                "Standalone Python unavailable, using QGIS Python as fallback",
+                "Standalone Python unavailable, using KADAS Python as fallback",
                 Qgis.Warning
             )
-            return qgis_python
+            return kadas_python
 
     # No fallback available
     raise RuntimeError(
@@ -437,6 +672,9 @@ def create_venv(venv_dir: str = None, progress_callback: Optional[Callable[[int,
     if venv_dir is None:
         venv_dir = VENV_DIR
 
+    # Log the cache directory location for user's reference
+    if sys.platform == "win32":
+        _log(f"Package cache directory: %APPDATA%\\kadas_ai_segmentation", Qgis.Info)
     _log(f"Creating virtual environment at: {venv_dir}", Qgis.Info)
 
     if progress_callback:
@@ -445,6 +683,7 @@ def create_venv(venv_dir: str = None, progress_callback: Optional[Callable[[int,
     system_python = _get_system_python()
     _log(f"Using Python: {system_python}", Qgis.Info)
 
+    # Try standard venv first
     cmd = [system_python, "-m", "venv", venv_dir]
 
     try:
@@ -460,7 +699,7 @@ def create_venv(venv_dir: str = None, progress_callback: Optional[Callable[[int,
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=300,  # Increased from 120s to 300s for slow corporate environments
                 env=env,
                 startupinfo=startupinfo,
             )
@@ -469,7 +708,7 @@ def create_venv(venv_dir: str = None, progress_callback: Optional[Callable[[int,
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=300,  # Increased from 120s to 300s for slow corporate environments
                 env=env,
             )
 
@@ -485,7 +724,7 @@ def create_venv(venv_dir: str = None, progress_callback: Optional[Callable[[int,
                 try:
                     ensurepip_result = subprocess.run(
                         ensurepip_cmd,
-                        capture_output=True, text=True, timeout=120,
+                        capture_output=True, text=True, timeout=300,  # Increased from 120s to 300s
                         env=env,
                         **({"startupinfo": startupinfo} if sys.platform == "win32" else {}),
                     )
@@ -504,6 +743,12 @@ def create_venv(venv_dir: str = None, progress_callback: Optional[Callable[[int,
             return True, "Virtual environment created"
         else:
             error_msg = result.stderr or result.stdout or f"Return code {result.returncode}"
+            
+            # Check if venv creation was blocked by Group Policy (WinError 1260)
+            if sys.platform == "win32" and ("1260" in error_msg or "gruppo" in error_msg.lower() or "group" in error_msg.lower()):
+                _log("venv blocked by Group Policy, trying virtualenv fallback...", Qgis.Warning)
+                return _create_venv_with_virtualenv(venv_dir, system_python, env, progress_callback)
+            
             _log(f"Failed to create venv: {error_msg}", Qgis.Critical)
             return False, f"Failed to create venv: {error_msg[:200]}"
 
@@ -513,9 +758,234 @@ def create_venv(venv_dir: str = None, progress_callback: Optional[Callable[[int,
     except FileNotFoundError:
         _log(f"Python executable not found: {system_python}", Qgis.Critical)
         return False, f"Python not found: {system_python}"
+    except PermissionError as e:
+        # Corporate environment with restricted folder permissions (v0.6.5)
+        error_msg = _get_permission_error_help()
+        _log(error_msg, Qgis.Critical)
+        return False, error_msg
+    except OSError as e:
+        # Check for permission-related OSError (some platforms raise OSError instead of PermissionError)
+        error_str = str(e).lower()
+        if "permission" in error_str or "denied" in error_str or "access" in error_str:
+            error_msg = _get_permission_error_help()
+            _log(error_msg, Qgis.Critical)
+            return False, error_msg
+        # Non-permission OSError - re-raise
+        raise
     except Exception as e:
-        _log(f"Exception during venv creation: {str(e)}", Qgis.Critical)
-        return False, f"Error: {str(e)[:200]}"
+        error_str = str(e)
+        # Check for Group Policy error in exception
+        if sys.platform == "win32" and ("1260" in error_str or "gruppo" in error_str.lower() or "group" in error_str.lower()):
+            _log("venv blocked by Group Policy, trying virtualenv fallback...", Qgis.Warning)
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
+            return _create_venv_with_virtualenv(venv_dir, system_python, env, progress_callback)
+        
+        _log(f"Exception during venv creation: {error_str}", Qgis.Critical)
+        return False, f"Error: {error_str[:200]}"
+
+
+def _create_venv_with_virtualenv(venv_dir: str, system_python: str, env: dict, progress_callback: Optional[Callable[[int, str], None]] = None) -> Tuple[bool, str]:
+    """Fallback to virtualenv when venv is blocked by Group Policy.
+    
+    virtualenv doesn't use symlinks/hardlinks and works even with restricted permissions.
+    """
+    _log("Attempting to use virtualenv as fallback (corporate environment workaround)", Qgis.Info)
+    
+    if progress_callback:
+        progress_callback(12, "Installing virtualenv tool...")
+    
+    # First, install virtualenv into QGIS Python if not available
+    try:
+        # Check if virtualenv is already available
+        check_cmd = [system_python, "-m", "virtualenv", "--version"]
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            check_result = subprocess.run(
+                check_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+                startupinfo=startupinfo
+            )
+        else:
+            check_result = subprocess.run(
+                check_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env
+            )
+        
+        if check_result.returncode != 0:
+            # Install virtualenv
+            _log("virtualenv not found, installing...", Qgis.Info)
+            install_cmd = [system_python, "-m", "pip", "install", "--user", "virtualenv"]
+            
+            if sys.platform == "win32":
+                install_result = subprocess.run(
+                    install_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    env=env,
+                    startupinfo=startupinfo
+                )
+            else:
+                install_result = subprocess.run(
+                    install_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    env=env
+                )
+            
+            if install_result.returncode != 0:
+                err = install_result.stderr or install_result.stdout or "Unknown error"
+                
+                # Check if pip itself is broken (OpenSSL, import errors, etc.)
+                pip_broken = any(keyword in err for keyword in [
+                    "RuntimeError", "ImportError", "ModuleNotFoundError",
+                    "OpenSSL", "cryptography", "failed to load"
+                ])
+                
+                if pip_broken:
+                    _log("pip is broken (likely OpenSSL/crypto issue), skipping to manual folder fallback...", Qgis.Warning)
+                    _log(f"pip error: {err[:500]}", Qgis.Warning)
+                    return _create_manual_venv_folder(venv_dir, system_python, progress_callback)
+                
+                # Check if Group Policy is blocking pip install --user
+                if "1260" in err or "Criteri di gruppo" in err or "Group Policy" in err:
+                    _log("Group Policy blocks pip install --user, trying manual folder fallback...", Qgis.Warning)
+                    return _create_manual_venv_folder(venv_dir, system_python, progress_callback)
+                
+                # Log full error for debugging
+                _log(f"Failed to install virtualenv. Error output:\n{err}", Qgis.Critical)
+                return False, f"Failed to install virtualenv tool. Check QGIS logs for details."
+            
+            _log("virtualenv installed successfully", Qgis.Success)
+        
+        if progress_callback:
+            progress_callback(15, "Creating virtual environment with virtualenv...")
+        
+        # Create venv using virtualenv
+        create_cmd = [system_python, "-m", "virtualenv", venv_dir, "--no-download"]
+        
+        if sys.platform == "win32":
+            create_result = subprocess.run(
+                create_cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # Increased from 120s to 300s for slow corporate environments
+                env=env,
+                startupinfo=startupinfo
+            )
+        else:
+            create_result = subprocess.run(
+                create_cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # Increased from 120s to 300s for slow corporate environments
+                env=env
+            )
+        
+        if create_result.returncode == 0:
+            _log("Virtual environment created successfully with virtualenv", Qgis.Success)
+            if progress_callback:
+                progress_callback(20, "Virtual environment created")
+            return True, "Virtual environment created (virtualenv)"
+        else:
+            err = create_result.stderr or create_result.stdout or "Unknown error"
+            # Log full error for debugging
+            _log(f"virtualenv creation failed. Full error:\n{err}", Qgis.Critical)
+            
+            # Check if pip/OpenSSL is broken - skip to manual folder
+            pip_broken = any(keyword in err for keyword in [
+                "RuntimeError", "ImportError", "ModuleNotFoundError",
+                "OpenSSL", "cryptography", "failed to load"
+            ])
+            
+            if pip_broken:
+                _log("virtualenv failed due to pip/OpenSSL issue, trying manual folder fallback...", Qgis.Warning)
+                return _create_manual_venv_folder(venv_dir, system_python, progress_callback)
+            
+            # Check if Group Policy is still blocking
+            if "1260" in err or "Criteri di gruppo" in err or "Group Policy" in err:
+                _log("virtualenv blocked by Group Policy, trying manual folder fallback...", Qgis.Warning)
+                return _create_manual_venv_folder(venv_dir, system_python, progress_callback)
+            
+            return False, f"virtualenv failed to create environment. Check QGIS logs for details."
+    
+    except Exception as e:
+        error_msg = str(e)
+        _log(f"virtualenv fallback exception: {error_msg}", Qgis.Critical)
+        
+        # Check if Group Policy in exception - try manual folder fallback
+        if "1260" in error_msg or "Criteri di gruppo" in error_msg or "Group Policy" in error_msg:
+            _log("Both venv and virtualenv blocked by Group Policy, trying manual folder fallback...", Qgis.Warning)
+            return _create_manual_venv_folder(venv_dir, system_python, progress_callback)
+        
+        return False, f"virtualenv fallback error. Check QGIS logs for details."
+
+
+def _create_manual_venv_folder(venv_dir: str, system_python: str, progress_callback: Optional[Callable[[int, str], None]] = None) -> Tuple[bool, str]:
+    """Ultimate fallback: create a manual folder structure for packages without using venv/virtualenv.
+    
+    This bypasses Group Policy by not creating a "virtual environment" at all - just a folder
+    where we'll install packages with pip --target.
+    """
+    _log("Creating manual package folder (Group Policy bypass strategy)", Qgis.Info)
+    
+    if progress_callback:
+        progress_callback(15, "Creating manual package folder...")
+    
+    try:
+        # Create directory structure
+        os.makedirs(venv_dir, exist_ok=True)
+        
+        # Create Lib/site-packages directory (matches venv structure for compatibility)
+        site_packages = os.path.join(venv_dir, "Lib", "site-packages")
+        os.makedirs(site_packages, exist_ok=True)
+        
+        # Create Scripts directory for pip/executables
+        scripts_dir = os.path.join(venv_dir, "Scripts") if sys.platform == "win32" else os.path.join(venv_dir, "bin")
+        os.makedirs(scripts_dir, exist_ok=True)
+        
+        # Copy Python executable to Scripts folder (so we have a local Python)
+        import shutil
+        python_name = "python.exe" if sys.platform == "win32" else "python"
+        python_copy = os.path.join(scripts_dir, python_name)
+        
+        try:
+            shutil.copy2(system_python, python_copy)
+            _log(f"Copied Python to: {python_copy}", Qgis.Info)
+        except Exception as copy_err:
+            # If we can't copy, we'll use system Python directly
+            _log(f"Could not copy Python (will use system Python): {copy_err}", Qgis.Warning)
+            python_copy = system_python
+        
+        # Create a pyvenv.cfg to mark this as a "venv-like" folder
+        pyvenv_cfg = os.path.join(venv_dir, "pyvenv.cfg")
+        with open(pyvenv_cfg, "w") as f:
+            f.write(f"home = {os.path.dirname(system_python)}\n")
+            f.write("include-system-site-packages = false\n")
+            f.write(f"version = {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}\n")
+            f.write("# Manual folder created to bypass Group Policy\n")
+        
+        _log(f"Manual package folder created: {venv_dir}", Qgis.Success)
+        
+        if progress_callback:
+            progress_callback(20, "Manual package folder created")
+        
+        return True, "Manual package folder created (Group Policy bypass)"
+    
+    except Exception as e:
+        _log(f"Failed to create manual package folder: {str(e)}", Qgis.Critical)
+        return False, f"Could not create package folder: {str(e)}"
 
 
 def install_dependencies(
@@ -530,8 +1000,18 @@ def install_dependencies(
     if not venv_exists(venv_dir):
         return False, "Virtual environment does not exist"
 
+    # Check if this is a manual folder (Group Policy bypass)
+    is_manual = is_manual_venv_folder(venv_dir)
+    
     pip_path = get_venv_pip_path(venv_dir)
-    _log(f"Installing dependencies using: {pip_path}", Qgis.Info)
+    python_path = get_venv_python_path(venv_dir)
+    
+    if is_manual:
+        _log(f"Installing to manual folder (Group Policy bypass): {venv_dir}", Qgis.Info)
+        _log(f"Using system Python for installation: {python_path}", Qgis.Info)
+    else:
+        _log(f"Installing dependencies using: {pip_path}", Qgis.Info)
+    
     if cuda_enabled:
         _log("CUDA mode enabled - will install GPU-accelerated PyTorch", Qgis.Info)
 
@@ -577,6 +1057,13 @@ def install_dependencies(
             "--disable-pip-version-check",
             "--prefer-binary",  # Prefer pre-built wheels to avoid C extension build issues
         ]
+        
+        # For manual folders, use --target to install directly to site-packages
+        if is_manual:
+            site_packages = os.path.join(venv_dir, "Lib", "site-packages")
+            pip_args.extend(["--target", site_packages])
+            _log(f"Using --target to install to: {site_packages}", Qgis.Info)
+        
         pip_args.extend(_get_pip_proxy_args())
         pip_args.append(package_spec)
 
@@ -597,9 +1084,14 @@ def install_dependencies(
 
         subprocess_kwargs = _get_subprocess_kwargs()
 
-        # CUDA wheels are ~2.5GB, need more time than standard packages
+        # Set appropriate timeouts based on package size and network conditions
+        # Increased timeouts to handle slow corporate networks/proxies (v0.6.5)
         if is_cuda_package and package_name in ("torch", "torchvision"):
-            pkg_timeout = 1800  # 30 min for CUDA wheels
+            pkg_timeout = 2400  # 40 min for CUDA wheels (~2.5GB)
+        elif package_name == "torch":
+            pkg_timeout = 3600  # 60 min for CPU torch (~600MB, slow on corporate networks)
+        elif package_name == "torchvision":
+            pkg_timeout = 1200  # 20 min for CPU torchvision
         else:
             pkg_timeout = 600  # 10 min for standard packages
 
@@ -673,6 +1165,11 @@ def install_dependencies(
                 install_failed = True
                 install_error_msg = error_msg
                 last_returncode = result.returncode
+                
+                # Check for Group Policy error (WinError 1260)
+                if sys.platform == "win32" and ("1260" in error_msg or "gruppo" in error_msg.lower() or "group" in error_msg.lower()):
+                    _log("Group Policy error detected during package installation", Qgis.Critical)
+                    return False, f"GROUP_POLICY_ERROR: {error_msg[:200]}"
 
         except subprocess.TimeoutExpired:
             _log(f"Installation of {package_spec} timed out", Qgis.Critical)
@@ -682,6 +1179,30 @@ def install_dependencies(
             _log(f"Exception during installation of {package_spec}: {str(e)}", Qgis.Critical)
             install_failed = True
             install_error_msg = f"Error installing {package_name}: {str(e)[:200]}"
+            
+            # Check for Group Policy error (WinError 1260)
+            error_str = str(e)
+            if sys.platform == "win32" and ("1260" in error_str or "gruppo" in error_str.lower() or "group" in error_str.lower()):
+                _log("Group Policy error detected during package installation", Qgis.Critical)
+                
+                # If this happens in a manual folder, it means Python execution itself is blocked
+                if is_manual:
+                    error_msg = (
+                        "CRITICAL: Group Policy is blocking Python execution entirely.\n\n"
+                        "This corporate environment has severe restrictions that prevent:\n"
+                        "  1. Creating virtual environments (venv blocked)\n"
+                        "  2. Using virtualenv tool (pip blocked)\n"
+                        "  3. Running Python.exe directly (execution blocked)\n\n"
+                        "This plugin cannot work in this environment.\n\n"
+                        "Please contact your IT administrator to:\n"
+                        "  - Whitelist Python execution (python.exe)\n"
+                        "  - Allow pip package installation\n"
+                        "  - Enable virtual environment creation\n\n"
+                        "Alternatively, use a personal computer without these restrictions."
+                    )
+                    return False, error_msg
+                
+                return False, f"GROUP_POLICY_ERROR: {install_error_msg}"
 
         # CUDA → CPU silent fallback: if CUDA install failed, retry with CPU wheel
         if install_failed and is_cuda_package:
@@ -1000,17 +1521,17 @@ def create_venv_and_install(
         )
 
         if not success:
-            # On Windows, try QGIS Python fallback before giving up
+            # On Windows, try KADAS Python fallback before giving up
             if sys.platform == "win32":
-                qgis_python = _get_qgis_python()
-                if qgis_python:
+                kadas_python = _get_kadas_python()
+                if kadas_python:
                     _log(
                         "Standalone Python download failed, "
-                        "falling back to QGIS Python: {}".format(msg),
+                        "falling back to KADAS Python: {}".format(msg),
                         Qgis.Warning
                     )
                     if progress_callback:
-                        progress_callback(10, "Using QGIS Python (fallback)...")
+                        progress_callback(10, "Using KADAS Python (fallback)...")
                 else:
                     return False, f"Failed to download Python: {msg}"
             else:
@@ -1055,7 +1576,54 @@ def create_venv_and_install(
     )
 
     if not success:
-        return False, msg
+        # Check if it's a Group Policy error
+        if "GROUP_POLICY_ERROR" in msg:
+            _log("Detected Group Policy blocking venv, recreating with virtualenv...", Qgis.Warning)
+            if progress_callback:
+                progress_callback(15, "Group Policy detected, switching to virtualenv...")
+            
+            # Remove the old venv
+            import shutil
+            venv_dir = get_venv_dir()
+            if os.path.exists(venv_dir):
+                _log(f"Removing old venv: {venv_dir}", Qgis.Info)
+                try:
+                    shutil.rmtree(venv_dir)
+                except Exception as e:
+                    _log(f"Failed to remove old venv: {e}", Qgis.Warning)
+            
+            # Get system Python
+            system_python = _get_system_python()
+            
+            # Create venv with virtualenv
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
+            
+            def venv_progress_retry(percent, msg):
+                if progress_callback:
+                    progress_callback(10 + int(percent * 0.05), msg)
+            
+            success_venv, msg_venv = _create_venv_with_virtualenv(
+                venv_dir, system_python, env, venv_progress_retry
+            )
+            
+            if not success_venv:
+                return False, f"Failed to create venv with virtualenv: {msg_venv}"
+            
+            if cancel_check and cancel_check():
+                return False, "Installation cancelled"
+            
+            # Retry installation with the new venv
+            success, msg = install_dependencies(
+                progress_callback=deps_progress,
+                cancel_check=cancel_check,
+                cuda_enabled=cuda_enabled
+            )
+            
+            if not success:
+                return False, msg
+        else:
+            return False, msg
 
     # Step 4: Verify installation (95-100%)
     def verify_progress(percent: int, msg: str):

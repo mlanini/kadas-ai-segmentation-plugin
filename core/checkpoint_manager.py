@@ -1,19 +1,56 @@
 import os
 import hashlib
+import threading
 from typing import Tuple, Optional, Callable
 
 from qgis.core import QgsMessageLog, Qgis
 from qgis.PyQt.QtCore import QUrl
 from qgis.PyQt.QtNetwork import QNetworkRequest
 
+from .model_config import (
+    CHECKPOINT_URL, CHECKPOINT_FILENAME, CHECKPOINT_SHA256,
+    USE_SAM2,
+)
 
-CACHE_DIR = os.path.expanduser("~/.qgis_ai_segmentation")
+
+def _get_cache_base_dir() -> str:
+    """Get the appropriate cache directory for KADAS.
+    
+    Checks AI_SEGMENTATION_CACHE_DIR environment variable first (for corporate environments),
+    then falls back to platform-specific defaults.
+
+    Returns:
+        - Environment variable AI_SEGMENTATION_CACHE_DIR if set
+        - KADAS: ~/.kadas_ai_segmentation (Linux/Mac) or %APPDATA%/kadas_ai_segmentation (Windows)
+    """
+    import sys
+
+    # Check environment variable first (for corporate/IT-managed installations)
+    custom_cache = os.environ.get("AI_SEGMENTATION_CACHE_DIR")
+    if custom_cache:
+        os.makedirs(custom_cache, exist_ok=True)
+        return custom_cache
+
+    if sys.platform == "win32":
+        # Windows: Use %APPDATA%/kadas_ai_segmentation
+        appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
+        base_dir = os.path.join(appdata, "kadas_ai_segmentation")
+    else:
+        # Linux/Mac: Use hidden directory in home
+        base_dir = os.path.expanduser("~/.kadas_ai_segmentation")
+
+    os.makedirs(base_dir, exist_ok=True)
+    return base_dir
+
+
+CACHE_DIR = _get_cache_base_dir()
 CHECKPOINTS_DIR = os.path.join(CACHE_DIR, "checkpoints")
 FEATURES_DIR = os.path.join(CACHE_DIR, "features")
 
-SAM_CHECKPOINT_URL = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
-SAM_CHECKPOINT_FILENAME = "sam_vit_b_01ec64.pth"
-# SHA256 hash for checkpoint verification (not a secret - this is a public checksum)
+SAM_CHECKPOINT_URL = CHECKPOINT_URL
+SAM_CHECKPOINT_FILENAME = CHECKPOINT_FILENAME
+SAM_CHECKPOINT_SHA256 = CHECKPOINT_SHA256
+OLD_CHECKPOINT_FILENAME = "sam_vit_b_01ec64.pth"
 SAM_CHECKPOINT_SHA256 = "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912"  # noqa: S105  # pragma: allowlist secret
 
 
@@ -72,10 +109,76 @@ def download_checkpoint(
     progress_callback: Optional[Callable[[int, str], None]] = None
 ) -> Tuple[bool, str]:
     """
-    Download SAM checkpoint using QGIS network manager with progress reporting.
+    Download SAM checkpoint using KADAS network manager with progress reporting.
+    
+    Implements exponential backoff retry strategy (5, 10, 20, 40, 80s delays)
+    for network resilience in corporate environments (v0.6.5).
 
     Uses QNetworkAccessManager with a local event loop to provide real-time
     download progress updates instead of blocking without feedback.
+    
+    Note: Proxy settings are automatically applied by proxy_handler.initialize_proxy()
+    called in plugin initGui(). QgsNetworkAccessManager respects KADAS proxy settings.
+    """
+    # Exponential backoff configuration (v0.6.5)
+    MAX_RETRIES = 5
+    BACKOFF_DELAYS = [5, 10, 20, 40, 80]  # seconds
+    
+    last_error = ""
+    
+    for attempt in range(MAX_RETRIES):
+        if attempt > 0:
+            delay = BACKOFF_DELAYS[attempt - 1]
+            QgsMessageLog.logMessage(
+                f"Download failed (attempt {attempt}/{MAX_RETRIES}), "
+                f"retrying in {delay}s...",
+                "AI Segmentation",
+                level=Qgis.Warning
+            )
+            if progress_callback:
+                progress_callback(0, f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})...")
+            
+            import time
+            time.sleep(delay)
+        
+        success, message = _download_checkpoint_attempt(progress_callback)
+        
+        if success:
+            return True, message
+        
+        last_error = message
+        QgsMessageLog.logMessage(
+            f"Download attempt {attempt + 1}/{MAX_RETRIES} failed: {message}",
+            "AI Segmentation",
+            level=Qgis.Warning
+        )
+    
+    # All retries exhausted - provide firewall guidance
+    firewall_hint = (
+        "\n\nDownload failed after all retries. "
+        "This may indicate firewall or network restrictions.\n\n"
+        "Please ask your IT department to allow access to:\n"
+        "  - download.pytorch.org\n"
+        "  - githubusercontent.com\n\n"
+        "Or manually download the checkpoint file and place it at:\n"
+        f"  {get_checkpoint_path()}"
+    )
+    
+    QgsMessageLog.logMessage(
+        f"All download attempts failed. Last error: {last_error}{firewall_hint}",
+        "AI Segmentation",
+        level=Qgis.Critical
+    )
+    
+    return False, f"{last_error}{firewall_hint}"
+
+
+def _download_checkpoint_attempt(
+    progress_callback: Optional[Callable[[int, str], None]] = None
+) -> Tuple[bool, str]:
+    """
+    Single download attempt (without retry logic).
+    Internal function called by download_checkpoint() with exponential backoff.
     """
     from qgis.PyQt.QtCore import QEventLoop, QTimer
     from qgis.PyQt.QtNetwork import QNetworkReply
@@ -140,7 +243,7 @@ def download_checkpoint(
         download_state['error'] = reply.errorString()
 
     try:
-        # Use QGIS network manager for proxy-aware downloads
+        # Use KADAS network manager for proxy-aware downloads
         manager = QgsNetworkAccessManager.instance()
         qurl = QUrl(SAM_CHECKPOINT_URL)
         request = QNetworkRequest(qurl)
@@ -206,6 +309,17 @@ def download_checkpoint(
         with open(temp_path, 'wb') as f:
             f.write(content)
 
+        # Check for 0-byte corrupted download (v0.6.5)
+        file_size = os.path.getsize(temp_path)
+        if file_size == 0:
+            os.remove(temp_path)
+            QgsMessageLog.logMessage(
+                "Downloaded checkpoint is 0 bytes (corrupt)",
+                "AI Segmentation",
+                level=Qgis.Critical
+            )
+            return False, "Download corrupted (0 bytes)"
+
         if progress_callback:
             progress_callback(95, "Verifying download...")
 
@@ -256,3 +370,42 @@ def clear_features_for_raster(raster_path: str) -> bool:
         os.makedirs(features_dir, exist_ok=True)
         return True
     return False
+
+
+def cleanup_legacy_sam1_data():
+    """Remove legacy SAM1 data: old checkpoint and features cache.
+
+    Called once at plugin startup. Errors are logged silently
+    to avoid disturbing the user.
+
+    On Python 3.9 (USE_SAM2=False), the SAM1 checkpoint is still needed,
+    so only features cache is cleaned up.
+    """
+    import shutil
+
+    # Remove old SAM1 checkpoint only when using SAM2 (Python 3.10+)
+    if USE_SAM2:
+        old_checkpoint = os.path.join(CHECKPOINTS_DIR, OLD_CHECKPOINT_FILENAME)
+        if os.path.exists(old_checkpoint):
+            try:
+                os.remove(old_checkpoint)
+                QgsMessageLog.logMessage(
+                    "Removed old SAM1 checkpoint: {}".format(
+                        OLD_CHECKPOINT_FILENAME),
+                    "AI Segmentation", level=Qgis.Info)
+            except OSError as e:
+                QgsMessageLog.logMessage(
+                    "Could not remove old checkpoint: {}".format(e),
+                    "AI Segmentation", level=Qgis.Warning)
+
+    # Remove old features cache (SAM2 does on-demand encoding, no cache needed)
+    if os.path.exists(FEATURES_DIR):
+        try:
+            shutil.rmtree(FEATURES_DIR)
+            QgsMessageLog.logMessage(
+                "Removed legacy features cache",
+                "AI Segmentation", level=Qgis.Info)
+        except OSError as e:
+            QgsMessageLog.logMessage(
+                "Could not remove features cache: {}".format(e),
+                "AI Segmentation", level=Qgis.Warning)

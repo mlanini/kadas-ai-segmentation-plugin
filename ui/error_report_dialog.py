@@ -126,9 +126,9 @@ def _collect_diagnostic_info(error_message: str) -> str:
 
     try:
         from qgis.core import Qgis
-        lines.append("QGIS: {}".format(Qgis.QGIS_VERSION))
+        lines.append("KADAS: {}".format(Qgis.QGIS_VERSION))
     except Exception:
-        lines.append("QGIS: unknown")
+        lines.append("KADAS: unknown")
     lines.append("")
 
     # GPU info
@@ -227,25 +227,19 @@ class ErrorReportDialog(QDialog):
             tr("Copy your logs with the button below and send them to our email so we can fix your issue :)")
         )
         help_label.setWordWrap(True)
-        help_label.setStyleSheet("color: palette(text); margin-top: 6px;")
+        help_label.setStyleSheet("color: #CCCCCC; margin-top: 6px;")
         layout.addWidget(help_label)
-
-        # Action buttons row
-        action_layout = QHBoxLayout()
-        action_layout.setSpacing(8)
 
         # Copy logs button
         self._copy_btn = QPushButton(tr("Copy log to clipboard"))
         self._copy_btn.clicked.connect(self._on_copy)
-        action_layout.addWidget(self._copy_btn)
+        layout.addWidget(self._copy_btn)
 
-        # Email button - copies the email address to clipboard
-        self._email_btn = QPushButton(SUPPORT_EMAIL)
-        self._email_btn.setToolTip(tr("Copy email address"))
-        self._email_btn.clicked.connect(self._on_copy_email)
-        action_layout.addWidget(self._email_btn)
-
-        layout.addLayout(action_layout)
+        # Support email (centered, below copy button)
+        email_label = QLabel(SUPPORT_EMAIL)
+        email_label.setAlignment(Qt.AlignCenter)
+        email_label.setStyleSheet("color: #888888; margin-top: 8px;")
+        layout.addWidget(email_label)
 
         # TerraLab link (discreet, at the bottom)
         link_label = QLabel(
@@ -262,14 +256,6 @@ class ErrorReportDialog(QDialog):
         self._copy_btn.setText(tr("Copied!"))
         from qgis.PyQt.QtCore import QTimer
         QTimer.singleShot(2000, lambda: self._copy_btn.setText(tr("Copy log to clipboard")))
-
-    def _on_copy_email(self):
-        """Copy support email address to clipboard."""
-        clipboard = QApplication.clipboard()
-        clipboard.setText(SUPPORT_EMAIL)
-        self._email_btn.setText(tr("Email copied!"))
-        from qgis.PyQt.QtCore import QTimer
-        QTimer.singleShot(2000, lambda: self._email_btn.setText(SUPPORT_EMAIL))
 
 
 class BugReportDialog(QDialog):
@@ -301,22 +287,16 @@ class BugReportDialog(QDialog):
         msg_label.setWordWrap(True)
         layout.addWidget(msg_label)
 
-        # Action buttons row
-        action_layout = QHBoxLayout()
-        action_layout.setSpacing(8)
-
         # Copy logs button
         self._copy_btn = QPushButton(tr("Copy log to clipboard"))
         self._copy_btn.clicked.connect(self._on_copy)
-        action_layout.addWidget(self._copy_btn)
+        layout.addWidget(self._copy_btn)
 
-        # Email button - copies the email address to clipboard
-        self._email_btn = QPushButton(SUPPORT_EMAIL)
-        self._email_btn.setToolTip(tr("Copy email address"))
-        self._email_btn.clicked.connect(self._on_copy_email)
-        action_layout.addWidget(self._email_btn)
-
-        layout.addLayout(action_layout)
+        # Support email (centered, below copy button)
+        email_label = QLabel(SUPPORT_EMAIL)
+        email_label.setAlignment(Qt.AlignCenter)
+        email_label.setStyleSheet("color: #888888; margin-top: 8px;")
+        layout.addWidget(email_label)
 
         # TerraLab link (discreet, at the bottom)
         link_label = QLabel(
@@ -333,14 +313,6 @@ class BugReportDialog(QDialog):
         self._copy_btn.setText(tr("Copied!"))
         from qgis.PyQt.QtCore import QTimer
         QTimer.singleShot(2000, lambda: self._copy_btn.setText(tr("Copy log to clipboard")))
-
-    def _on_copy_email(self):
-        """Copy support email address to clipboard."""
-        clipboard = QApplication.clipboard()
-        clipboard.setText(SUPPORT_EMAIL)
-        self._email_btn.setText(tr("Email copied!"))
-        from qgis.PyQt.QtCore import QTimer
-        QTimer.singleShot(2000, lambda: self._email_btn.setText(SUPPORT_EMAIL))
 
 
 def show_error_report(parent, error_title: str, error_message: str):
