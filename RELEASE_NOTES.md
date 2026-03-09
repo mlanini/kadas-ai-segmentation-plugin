@@ -2,16 +2,16 @@
 
 ## Version 0.1.0 (2026-03-09)
 
-### 🎉 Initial KADAS Albireo 2 Release
+### Initial KADAS Albireo 2 Release
 
 **Major Features:**
-- ✅ Full KADAS Albireo 2 compatibility
-- ✅ AI-powered segmentation using SAM2 (Segment Anything Model 2)
-- ✅ Integrated in KADAS AI ribbon tab
-- ✅ Interactive point-based segmentation tool
-- ✅ Automatic Python environment management
-- ✅ Dependency auto-installation (~800MB)
-- ✅ Export to GeoPackage and Shapefile formats
+- Full KADAS Albireo 2 compatibility
+- AI-powered segmentation using SAM2 (Segment Anything Model 2)
+- Integrated in KADAS AI ribbon tab
+- Interactive point-based segmentation tool
+- Automatic Python environment management
+- Dependency auto-installation (~800MB)
+- Export to GeoPackage and Shapefile formats
 
 **KADAS-Specific Features:**
 - Native KADAS plugin interface integration
