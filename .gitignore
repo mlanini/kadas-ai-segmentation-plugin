@@ -38,3 +38,4 @@ PACKAGING.md
 package_complex.py
 .gitignore
 package.py
+.claude.md
