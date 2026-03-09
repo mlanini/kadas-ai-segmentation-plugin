@@ -9,12 +9,16 @@
         <translation>¡Bienvenido! Dos pasos rápidos para comenzar:</translation>
     </message>
     <message>
-        <source>Install AI dependencies (~800MB)</source>
-        <translation>Instalar dependencias de IA (~800MB)</translation>
+        <source>Install AI dependencies</source>
+        <translation>Instalar dependencias de IA</translation>
     </message>
     <message>
-        <source>Download the segmentation model (~375MB)</source>
-        <translation>Descargar el modelo de segmentación (~375MB)</translation>
+        <source>Download the segmentation model</source>
+        <translation>Descargar el modelo de segmentación</translation>
+    </message>
+    <message>
+        <source>{gpu_name} detected :) GPU dependencies will be installed, so it takes a bit longer, but segmentation will be 5 to 10x faster and handle large rasters easily.</source>
+        <translation>{gpu_name} detectada :) Se instalarán las dependencias GPU, tarda un poco más, pero la segmentación será 5 a 10x más rápida y manejará fácilmente rasters grandes.</translation>
     </message>
 
     <!-- Dependencies Section -->
@@ -43,12 +47,24 @@
         <translation>Instalar dependencias</translation>
     </message>
     <message>
-        <source>Create isolated virtual environment and install required packages</source>
-        <translation>Crear entorno virtual aislado e instalar paquetes requeridos</translation>
+        <source>Dependencies need updating</source>
+        <translation>Las dependencias necesitan actualizarse</translation>
     </message>
     <message>
-        <source>Download size: ~800MB</source>
-        <translation>Tamaño de descarga: ~800MB</translation>
+        <source>Update Dependencies</source>
+        <translation>Actualizar dependencias</translation>
+    </message>
+    <message>
+        <source>Updating...</source>
+        <translation>Actualizando...</translation>
+    </message>
+    <message>
+        <source>Updating dependencies...</source>
+        <translation>Actualizando dependencias...</translation>
+    </message>
+    <message>
+        <source>Create isolated virtual environment and install required packages</source>
+        <translation>Crear entorno virtual aislado e instalar paquetes requeridos</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -249,16 +265,12 @@
         <translation>Seleccione una capa ráster local (GeoTIFF, etc.)</translation>
     </message>
     <message>
-        <source>No compatible raster found. Add a GeoTIFF or local image to your project.</source>
-        <translation>No se encontró ráster compatible. Agregue un GeoTIFF o imagen local a su proyecto.</translation>
+        <source>Found {count} web layer(s), but web services are not supported. Please add a local image file (GeoTIFF, PNG, JPG, etc.).</source>
+        <translation>Se encontró {count} capa(s) web, pero los servicios web no son compatibles. Agregue un archivo de imagen local (GeoTIFF, PNG, JPG, etc.).</translation>
     </message>
     <message>
-        <source>No compatible raster found. {count} layer(s) excluded (PNG/JPG without georeferencing). Use GeoTIFF format.</source>
-        <translation>No se encontró ráster compatible. {count} capa(s) excluida(s) (PNG/JPG sin georreferenciación). Use formato GeoTIFF.</translation>
-    </message>
-    <message>
-        <source>No compatible raster found. Add a GeoTIFF or georeferenced image to your project.</source>
-        <translation>No se encontró ráster compatible. Agregue un GeoTIFF o imagen georreferenciada a su proyecto.</translation>
+        <source>No image found. Please add an image file to your project (GeoTIFF, PNG, JPG, etc.).</source>
+        <translation>No se encontró imagen. Agregue un archivo de imagen a su proyecto (GeoTIFF, PNG, JPG, etc.).</translation>
     </message>
     <message>
         <source>Shortcuts: S (save polygon) · Enter (export to layer) · Ctrl+Z (undo) · Escape (clear)</source>
@@ -491,12 +503,28 @@
         <translation>Esto se almacena permanentemente, sin esperas la próxima vez :)</translation>
     </message>
     <message>
+        <source>Encoding is taking a long time.</source>
+        <translation>La codificación está tardando mucho.</translation>
+    </message>
+    <message>
+        <source>To speed up, reduce the image size or resolution before importing.</source>
+        <translation>Para acelerar, reduce el tamaño o la resolución de la imagen antes de importar.</translation>
+    </message>
+    <message>
         <source>Encoding Failed</source>
         <translation>Error en la codificación</translation>
     </message>
     <message>
         <source>Failed to encode raster:</source>
         <translation>Error al codificar ráster:</translation>
+    </message>
+    <message>
+        <source>Invalid Layer</source>
+        <translation>Capa inválida</translation>
+    </message>
+    <message>
+        <source>Layer extent contains invalid coordinates (NaN/Inf). Check the raster file.</source>
+        <translation>La extensión de la capa contiene coordenadas inválidas (NaN/Inf). Verifique el archivo ráster.</translation>
     </message>
 
     <!-- Dialogs -->
@@ -637,6 +665,22 @@
         <translation>Reportar un bug</translation>
     </message>
     <message>
+        <source>Suggest a feature</source>
+        <translation>Sugerir una funcionalidad</translation>
+    </message>
+    <message>
+        <source>We're building AI Segmentation for real-world geospatial workflows.</source>
+        <translation>Estamos desarrollando AI Segmentation para flujos geoespaciales reales.</translation>
+    </message>
+    <message>
+        <source>We'd love to understand your use case and make the plugin more useful for you :)</source>
+        <translation>Nos encantaría entender tu caso de uso y hacer el plugin más útil para ti :)</translation>
+    </message>
+    <message>
+        <source>Take a call</source>
+        <translation>Agendar una llamada</translation>
+    </message>
+    <message>
         <source>Tutorial &amp; Docs</source>
         <translation>Tutorial &amp; Docs</translation>
     </message>
@@ -653,8 +697,12 @@
         <translation>Contáctenos</translation>
     </message>
     <message>
-        <source>Something not working? Copy your logs and send them to us, we'll look into it :)</source>
-        <translation>¿Algo no funciona? Copia tus logs y envíanoslos, lo revisaremos :)</translation>
+        <source>Something not working?</source>
+        <translation>¿Algo no funciona?</translation>
+    </message>
+    <message>
+        <source>Copy your logs and send them to us, we'll look into it :)</source>
+        <translation>Copia tus logs y envíanoslos, lo revisaremos :)</translation>
     </message>
 
     <!-- Tooltip -->
@@ -665,8 +713,12 @@
 
     <!-- Error Report Dialog -->
     <message>
-        <source>Copy your logs with the button below and send them to our email so we can fix your issue :)</source>
-        <translation>Copia tus logs con el botón de abajo y envíalos a nuestro email para que podamos solucionar tu problema :)</translation>
+        <source>Copy your logs with the button below and send them to our email.</source>
+        <translation>Copia tus logs con el botón de abajo y envíalos a nuestro email.</translation>
+    </message>
+    <message>
+        <source>We'll fix your issue :)</source>
+        <translation>Solucionaremos tu problema :)</translation>
     </message>
     <message>
         <source>Copy log to clipboard</source>
@@ -695,26 +747,108 @@
         <translation>Instalación bloqueada</translation>
     </message>
 
-    <!-- CUDA / Device Info -->
+    <!-- GPU auto-detection -->
     <message>
-        <source>Enable NVIDIA GPU acceleration (CUDA)</source>
-        <translation>Activar aceleración GPU NVIDIA (CUDA)</translation>
+        <source>GPU mode failed, using CPU</source>
+        <translation>Modo GPU falló, usando CPU</translation>
     </message>
     <message>
-        <source>CUDA requires an NVIDIA GPU. Download size: ~2.5GB (vs ~600MB without CUDA).</source>
-        <translation>CUDA requiere una GPU NVIDIA. Tamaño de descarga: ~2,5GB (vs ~600MB sin CUDA).</translation>
+        <source>Your GPU was detected but CUDA installation didn't work.</source>
+        <translation>Tu GPU fue detectada pero la instalación CUDA no funcionó.</translation>
     </message>
     <message>
-        <source>Detected: {gpu_name}</source>
-        <translation>Detectado: {gpu_name}</translation>
+        <source>No worries, the plugin now uses CPU mode and everything works fine :) If you'd like us to fix GPU support for your setup, send us your logs!</source>
+        <translation>No te preocupes, el plugin ahora usa el modo CPU y todo funciona :) Si quieres que arreglemos el soporte GPU para tu config, ¡envíanos tus logs!</translation>
     </message>
     <message>
-        <source>Optional: speeds up segmentation. Requires ~2.5GB of disk space.</source>
-        <translation>Opcional: acelera la segmentación. Requiere ~2,5GB de espacio en disco.</translation>
+        <source>GPU acceleration available - upgrading</source>
+        <translation>Aceleración GPU disponible - actualizando</translation>
+    </message>
+    <message>
+        <source>Switching to CPU mode...</source>
+        <translation>Cambiando a modo CPU...</translation>
     </message>
     <message>
         <source>GPU not compatible with installed CUDA version, using CPU...</source>
         <translation>GPU no compatible con la versión CUDA instalada, usando CPU...</translation>
+    </message>
+    <message>
+        <source>Point is outside the encoded image. Click inside the raster.</source>
+        <translation>El punto está fuera de la imagen codificada. Haga clic dentro del ráster.</translation>
+    </message>
+
+    <!-- Update notification -->
+    <message>
+        <source>New version available ({version}). This plugin is in beta and evolves quickly.</source>
+        <translation>Nueva versión disponible ({version}). Este plugin está en beta y evoluciona rápidamente.</translation>
+    </message>
+    <message>
+        <source>Update now</source>
+        <translation>Actualizar ahora</translation>
+    </message>
+
+    <!-- Format conversion -->
+    <message>
+        <source>{ext} format is not directly supported. GDAL is not available for automatic conversion.
+Please convert your raster to GeoTIFF (.tif) before using AI Segmentation.</source>
+        <translation>El formato {ext} no es compatible directamente. GDAL no está disponible para la conversión automática.
+Por favor, convierta su ráster a GeoTIFF (.tif) antes de usar AI Segmentation.</translation>
+    </message>
+    <message>
+        <source>Converting {ext} to GeoTIFF...</source>
+        <translation>Convirtiendo {ext} a GeoTIFF...</translation>
+    </message>
+    <message>
+        <source>Cannot open {ext} file. The format may not be supported by your QGIS installation.
+Please convert your raster to GeoTIFF (.tif) before using AI Segmentation.</source>
+        <translation>No se puede abrir el archivo {ext}. El formato puede no ser compatible con su instalación de QGIS.
+Por favor, convierta su ráster a GeoTIFF (.tif) antes de usar AI Segmentation.</translation>
+    </message>
+    <message>
+        <source>Converting {ext} to GeoTIFF ({pct}%)...</source>
+        <translation>Convirtiendo {ext} a GeoTIFF ({pct}%)...</translation>
+    </message>
+    <message>
+        <source>Failed to convert {ext} file to GeoTIFF.</source>
+        <translation>Error al convertir el archivo {ext} a GeoTIFF.</translation>
+    </message>
+    <message>
+        <source>Failed to convert {ext} file to GeoTIFF: {error}
+Please convert your raster to GeoTIFF (.tif) manually.</source>
+        <translation>Error al convertir el archivo {ext} a GeoTIFF: {error}
+Por favor, convierta su ráster a GeoTIFF (.tif) manualmente.</translation>
+    </message>
+
+    <!-- PyTorch DLL Error Messages -->
+    <message>
+        <source>PyTorch Error</source>
+        <translation>Error de PyTorch</translation>
+    </message>
+    <message>
+        <source>PyTorch cannot load on Windows</source>
+        <translation>PyTorch no puede cargarse en Windows</translation>
+    </message>
+    <message>
+        <source>The plugin requires Visual C++ Redistributables to run PyTorch.
+
+Please download and install:
+https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+After installation, restart QGIS and try again.</source>
+        <translation>El plugin requiere Visual C++ Redistributables para ejecutar PyTorch.
+
+Por favor, descargue e instale:
+https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+Después de la instalación, reinicie QGIS e intente nuevamente.</translation>
+    </message>
+    <message>
+        <source>Prediction Error</source>
+        <translation>Error de predicción</translation>
+    </message>
+    <message>
+        <source>Segmentation failed</source>
+        <translation>Falló la segmentación</translation>
     </message>
 </context>
 </TS>

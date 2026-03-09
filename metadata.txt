@@ -1,21 +1,23 @@
 [general]
-name=Imagery Segmentation
+name=AI Segmentation by TerraLab
+description=Segment anything in your raster using AI
 qgisMinimumVersion=3.0
-qgisMaximumVersion=3.99
-description=Segment anything in your raster using AI - KADAS Albireo 2 Compatible
-version=0.1.0
-author=Michael Lanini
-email=mlanini@proton.me
+version=0.3.4
+author=Yvann and Lilien from TerraLab
+email=yvann.barbot@terra-lab.ai
 license=GPLv2
 
+
 about=
-    • Originally developped by Yvann and Lilien from www.terra-lab.ai
     • Automatic install of AI model & dependencies
-    • Works on Windows/Mac/Linux
-    • Available in several languages
-    • Compatible with KADAS Albireo 2
+    •  Works on Windows/Mac/Linux
+    •  Available in English, French, Portuguese & Spanish 
+
+
     • Using Meta's AI model for segmentation
-    • Vector layer export
+    •  Friendly & pretty user-interface
+
+    •  Vector layer export
 
 changelog=
     0.1.0 - KADAS Albireo 2 compatibility & Enterprise fixes
@@ -34,7 +36,8 @@ homepage=https://github.com/kadas-albireo/kadas-albireo2
 
 hasProcessingProvider=no
 
-tags=segmentation, AI, image segmentation, TerraLab, feature extraction, SAM, deep learning, remote sensing, satellite, raster, segment anything, IA, segmentation, vectorization, object detection, machine learning, digitizing, automatic, classification, polygon, artificial intelligence, KADAS, Albireo
+tags=segmentation, AI, image segmentation, TerraLab, feature extraction, SAM, deep learning, remote sensing, satellite, raster, segment anything, IA, segmentation, vectorization, object
+  detection, machine learning, digitizing, automatic, classification, polygon, artificial intelligence
 
 category=Raster
 icon=resources/icons/icon.png

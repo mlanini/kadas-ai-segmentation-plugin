@@ -138,9 +138,11 @@ def _collect_diagnostic_info(error_message: str) -> str:
         ensure_venv_packages_available()
         import torch
         if torch.cuda.is_available():
-            gpu_name = torch.cuda.get_device_name(0)
-            gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-            lines.append("CUDA: {} ({:.1f}GB)".format(gpu_name, gpu_mem))
+            count = torch.cuda.device_count()
+            for i in range(count):
+                gpu_name = torch.cuda.get_device_name(i)
+                gpu_mem = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+                lines.append("CUDA {}: {} ({:.1f}GB)".format(i, gpu_name, gpu_mem))
         elif sys.platform == "darwin" and hasattr(torch.backends, "mps"):
             if torch.backends.mps.is_available():
                 lines.append("GPU: Apple Silicon (MPS)")
@@ -179,6 +181,57 @@ def _collect_diagnostic_info(error_message: str) -> str:
             lines.append("Virtual environment not found")
     except Exception as e:
         lines.append("Could not list packages: {}".format(str(e)[:100]))
+    lines.append("")
+
+    # Last encoded image info
+    lines.append("--- Last Encoded Image ---")
+    try:
+        from ..core.checkpoint_manager import FEATURES_DIR
+        if os.path.isdir(FEATURES_DIR):
+            subdirs = [
+                os.path.join(FEATURES_DIR, d)
+                for d in os.listdir(FEATURES_DIR)
+                if os.path.isdir(os.path.join(FEATURES_DIR, d))
+            ]
+            if subdirs:
+                latest = max(subdirs, key=os.path.getmtime)
+                folder_name = os.path.basename(latest)
+                # Anonymize raster name for privacy - only show extension
+                lines.append("Raster: xxx.tif")
+
+                csv_path = os.path.join(latest, folder_name + ".csv")
+                tif_count = len([
+                    f for f in os.listdir(latest) if f.endswith('.tif')
+                ])
+                lines.append("Tiles: {}".format(tif_count))
+
+                if os.path.exists(csv_path):
+                    import csv as csv_mod
+                    with open(csv_path, "r", encoding="utf-8") as cf:
+                        reader = csv_mod.DictReader(cf)
+                        rows = list(reader)
+                    if rows:
+                        first = rows[0]
+                        crs_val = first.get("crs", "unknown")
+                        res_val = first.get("res", "unknown")
+                        lines.append("CRS: {}".format(crs_val))
+                        lines.append("Resolution: {}".format(res_val))
+
+                        all_minx = [float(r["minx"]) for r in rows]
+                        all_maxx = [float(r["maxx"]) for r in rows]
+                        all_miny = [float(r["miny"]) for r in rows]
+                        all_maxy = [float(r["maxy"]) for r in rows]
+                        lines.append("Bounds: [{:.2f}, {:.2f}, {:.2f}, {:.2f}]".format(
+                            min(all_minx), max(all_maxx),
+                            min(all_miny), max(all_maxy)))
+                else:
+                    lines.append("(CSV index not found)")
+            else:
+                lines.append("(No encoded images found)")
+        else:
+            lines.append("(No features directory)")
+    except Exception as e:
+        lines.append("Could not read: {}".format(str(e)[:100]))
     lines.append("")
 
     # Recent logs from the in-memory buffer
@@ -224,7 +277,9 @@ class ErrorReportDialog(QDialog):
 
         # Help text
         help_label = QLabel(
-            tr("Copy your logs with the button below and send them to our email so we can fix your issue :)")
+            "{}\n\n{}".format(
+                tr("Copy your logs with the button below and send them to our email."),
+                tr("We'll fix your issue :)"))
         )
         help_label.setWordWrap(True)
         help_label.setStyleSheet("color: #CCCCCC; margin-top: 6px;")
@@ -282,7 +337,9 @@ class BugReportDialog(QDialog):
 
         # Friendly message
         msg_label = QLabel(
-            tr("Something not working? Copy your logs and send them to us, we'll look into it :)")
+            "{}\n\n{}".format(
+                tr("Something not working?"),
+                tr("Copy your logs and send them to us, we'll look into it :)"))
         )
         msg_label.setWordWrap(True)
         layout.addWidget(msg_label)
@@ -324,4 +381,84 @@ def show_error_report(parent, error_title: str, error_message: str):
 def show_bug_report(parent):
     """Convenience function to show the bug report dialog."""
     dialog = BugReportDialog(parent)
+    dialog.exec_()
+
+
+CALENDLY_URL = "https://calendly.com/barbot-yvann/30min"
+
+
+class SuggestFeatureDialog(QDialog):
+    """Dialog for users to suggest features or share feedback."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("AI Segmentation")
+        self.setModal(True)
+        self.setMinimumWidth(400)
+        self.setMaximumWidth(500)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        msg_label = QLabel(
+            "{}\n\n{}".format(
+                tr("We're building AI Segmentation for real-world geospatial workflows."),
+                tr("We'd love to understand your use case and make the plugin more useful for you :)"))
+        )
+        msg_label.setWordWrap(True)
+        layout.addWidget(msg_label)
+
+        action_layout = QHBoxLayout()
+        action_layout.setSpacing(8)
+
+        # Email button (blue)
+        self._email_btn = QPushButton(SUPPORT_EMAIL)
+        self._email_btn.setToolTip(tr("Copy email address"))
+        self._email_btn.setStyleSheet(
+            "background-color: #1976d2; color: white; padding: 6px 12px;"
+        )
+        self._email_btn.clicked.connect(self._on_copy_email)
+        action_layout.addWidget(self._email_btn)
+
+        # Take a call button (green)
+        call_btn = QPushButton(tr("Take a call"))
+        call_btn.setStyleSheet(
+            "background-color: #2e7d32; color: white; padding: 6px 12px;"
+        )
+        call_btn.clicked.connect(self._on_take_call)
+        action_layout.addWidget(call_btn)
+
+        layout.addLayout(action_layout)
+
+        # TerraLab link
+        link_label = QLabel(
+            '<a href="{}" style="color: palette(link);">terra-lab.ai</a>'.format(
+                TERRALAB_URL)
+        )
+        link_label.setOpenExternalLinks(True)
+        link_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(link_label)
+
+    def _on_copy_email(self):
+        """Copy support email address to clipboard."""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(SUPPORT_EMAIL)
+        self._email_btn.setText(tr("Email copied!"))
+        from qgis.PyQt.QtCore import QTimer
+        QTimer.singleShot(
+            2000, lambda: self._email_btn.setText(SUPPORT_EMAIL))
+
+    def _on_take_call(self):
+        """Open Calendly link in browser."""
+        from qgis.PyQt.QtCore import QUrl
+        from qgis.PyQt.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl(CALENDLY_URL))
+
+
+def show_suggest_feature(parent):
+    """Convenience function to show the suggest feature dialog."""
+    dialog = SuggestFeatureDialog(parent)
     dialog.exec_()

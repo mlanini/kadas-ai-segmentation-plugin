@@ -23,11 +23,15 @@ from qgis.PyQt.QtNetwork import QNetworkRequest
 
 
 PLUGIN_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STANDALONE_DIR = os.path.join(PLUGIN_ROOT_DIR, "python_standalone")
+CACHE_DIR = os.path.expanduser("~/.qgis_ai_segmentation")
+STANDALONE_DIR = os.path.join(CACHE_DIR, "python_standalone")
 
 
 def _safe_extract_tar(tar: tarfile.TarFile, dest_dir: str) -> None:
     """Safely extract tar archive with path traversal protection."""
+    dest_dir = os.path.realpath(dest_dir)
+    # Python 3.12+ supports the filter parameter (suppresses DeprecationWarning)
+    use_filter = sys.version_info >= (3, 12)
     dest_dir = os.path.abspath(dest_dir)
     
     for member in tar.getmembers():
@@ -44,6 +48,10 @@ def _safe_extract_tar(tar: tarfile.TarFile, dest_dir: str) -> None:
         
         if not (member_path_norm + os.sep).startswith(dest_dir_norm) and member_path_norm != os.path.normpath(dest_dir):
             raise ValueError(f"Attempted path traversal in tar archive: {member.name}")
+        if use_filter:
+            tar.extract(member, dest_dir, filter='data')
+        else:
+            tar.extract(member, dest_dir)
         
         # Extract the member
         tar.extract(member, dest_dir)

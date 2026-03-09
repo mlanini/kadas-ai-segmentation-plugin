@@ -2,7 +2,12 @@
 import sys
 import json
 import os
-import numpy as np
+import gc
+
+# Ensure consistent GPU ordering on multi-GPU systems
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+
+import numpy as np  # noqa: E402
 
 
 TILE_SIZE = 1024
@@ -28,7 +33,27 @@ def get_optimal_device():
     try:
         import torch
         if torch.cuda.is_available():
-            return torch.device("cuda")
+            best_idx = -1
+            best_mem = 0
+            count = torch.cuda.device_count()
+            for i in range(count):
+                try:
+                    mem = torch.cuda.get_device_properties(i).total_memory
+                    if mem >= 2 * 1024 ** 3 and mem > best_mem:
+                        best_mem = mem
+                        best_idx = i
+                except Exception:
+                    continue
+            if best_idx < 0:
+                return torch.device("cpu")
+            # Verify CUDA kernels actually work
+            cuda_dev = "cuda:{}".format(best_idx)
+            t = torch.zeros(1, device=cuda_dev)
+            _ = t + 1
+            torch.cuda.synchronize(best_idx)
+            del t
+            torch.cuda.empty_cache()
+            return torch.device(cuda_dev)
         elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             # Prevent MPS OOM by disabling memory pool upper limit
             os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
@@ -89,6 +114,10 @@ def encode_raster(config):
 
         device = get_optimal_device()
         sam = sam_model_registry["vit_b"](checkpoint=checkpoint_path)
+        # Free memory before loading model onto GPU
+        if device.type == "cuda":
+            gc.collect()
+            torch.cuda.empty_cache()
         sam.to(device)
         sam.eval()
 
@@ -106,7 +135,19 @@ def encode_raster(config):
 
         send_progress(5, "Reading image...")
 
-        with rasterio.open(raster_path) as src:
+        try:
+            src_dataset = rasterio.open(raster_path)
+        except rasterio.errors.RasterioIOError:
+            ext = os.path.splitext(raster_path)[1].upper()
+            send_error(
+                "{ext} format is not supported by the encoding engine.\n"
+                "Please convert your raster to GeoTIFF (.tif) using:\n"
+                "  QGIS: Raster > Conversion > Translate\n"
+                "  Or: gdal_translate input{ext} output.tif".format(ext=ext)
+            )
+            sys.exit(1)
+
+        with src_dataset as src:
             raster_width = src.width
             raster_height = src.height
             raster_transform = src.transform
@@ -206,19 +247,27 @@ def encode_raster(config):
                     with torch.no_grad():
                         try:
                             features = sam.image_encoder(tile_tensor)
-                        except RuntimeError as e:
-                            if "out of memory" in str(e).lower() and device.type != "cpu":
-                                # GPU OOM: fall back to CPU for this tile
+                        except RuntimeError:
+                            if device.type != "cpu":
+                                # GPU error (OOM, illegal access, no kernel image, etc.)
+                                pct = int(5 + (processed / total_tiles) * 90)
                                 send_progress(
-                                    percent,
-                                    "GPU out of memory, falling back to CPU..."
+                                    pct,
+                                    "GPU error, falling back to CPU..."
                                 )
-                                if device.type == "cuda":
-                                    torch.cuda.empty_cache()
+                                try:
+                                    if device.type == "cuda":
+                                        torch.cuda.empty_cache()
+                                except Exception:
+                                    pass
                                 device = torch.device("cpu")
                                 sam.to(device)
                                 tile_tensor = tile_tensor.to(device)
-                                features = sam.image_encoder(tile_tensor)
+                                try:
+                                    features = sam.image_encoder(tile_tensor)
+                                except Exception as cpu_err:
+                                    send_error("CPU retry also failed: {}".format(cpu_err))
+                                    sys.exit(1)
                             else:
                                 raise
 

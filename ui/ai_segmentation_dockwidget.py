@@ -1,3 +1,4 @@
+import os
 import sys
 
 from qgis.PyQt.QtWidgets import (
@@ -14,6 +15,8 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit,
     QSpinBox,
     QCheckBox,
+    QToolButton,
+    QStyle,
 )
 from qgis.PyQt.QtCore import Qt, pyqtSignal, QTimer, QUrl
 from qgis.PyQt.QtGui import QDesktopServices, QKeySequence
@@ -35,7 +38,6 @@ class AISegmentationDockWidget(QDockWidget):
     install_dependencies_requested = pyqtSignal()
     cancel_deps_install_requested = pyqtSignal()
     download_checkpoint_requested = pyqtSignal()
-    cancel_download_requested = pyqtSignal()
     cancel_preparation_requested = pyqtSignal()
     start_segmentation_requested = pyqtSignal(object)
     clear_points_requested = pyqtSignal()
@@ -69,6 +71,7 @@ class AISegmentationDockWidget(QDockWidget):
         self._has_mask = False
         self._saved_polygon_count = 0
         self._encoding_start_time = None
+        self._slow_encoding_warned = False
         self._positive_count = 0
         self._negative_count = 0
         self._plugin_activated = is_plugin_activated()
@@ -131,6 +134,7 @@ class AISegmentationDockWidget(QDockWidget):
         self._setup_activation_section()
         self._setup_segmentation_section()
         self.main_layout.addStretch()
+        self._setup_update_notification()
         self._setup_about_section()
 
     def _setup_welcome_section(self):
@@ -183,11 +187,7 @@ class AISegmentationDockWidget(QDockWidget):
         self.install_button = QPushButton(tr("Install Dependencies"))
         self.install_button.clicked.connect(self._on_install_clicked)
         self.install_button.setVisible(False)
-        self.install_button.setToolTip(
-            "{}\n(PyTorch, Segment Anything, pandas, rasterio)\n{}".format(
-                tr("Create isolated virtual environment and install required packages"),
-                tr("Download size: ~800MB"))
-        )
+        self.install_button.setToolTip("")
         layout.addWidget(self.install_button)
 
         # Install path label - shows where dependencies will be installed
@@ -245,8 +245,20 @@ class AISegmentationDockWidget(QDockWidget):
         self.cancel_deps_button.setStyleSheet("background-color: #d32f2f;")
         layout.addWidget(self.cancel_deps_button)
 
-        self.main_layout.addWidget(self.deps_group)
+        self.gpu_info_box = QLabel("")
+        self.gpu_info_box.setWordWrap(True)
+        self.gpu_info_box.setStyleSheet(
+            "background-color: rgba(46, 125, 50, 0.08);"
+            "border: 1px solid rgba(46, 125, 50, 0.25);"
+            "border-radius: 4px;"
+            "padding: 8px;"
+            "font-size: 11px;"
+            "color: palette(text);"
+        )
+        self.gpu_info_box.setVisible(False)
+        layout.addWidget(self.gpu_info_box)
 
+        self.main_layout.addWidget(self.deps_group)
 
     def _setup_checkpoint_section(self):
         self.checkpoint_group = QGroupBox(tr("Step 2: Segmentation Model"))
@@ -272,17 +284,14 @@ class AISegmentationDockWidget(QDockWidget):
         self.download_button.setToolTip(tr("Download the SAM checkpoint for segmentation"))
         layout.addWidget(self.download_button)
 
-        self.cancel_download_button = QPushButton(tr("Cancel"))
-        self.cancel_download_button.clicked.connect(self._on_cancel_download_clicked)
-        self.cancel_download_button.setVisible(False)
-        self.cancel_download_button.setStyleSheet("background-color: #d32f2f;")
-        layout.addWidget(self.cancel_download_button)
-
         self.main_layout.addWidget(self.checkpoint_group)
 
     def _setup_activation_section(self):
-        """Setup the minimal activation section - only shown if popup was closed without activating."""
-        self.activation_group = QGroupBox(tr("Unlock Plugin"))
+        """Setup the activation section - only shown if popup was closed without activating."""
+        self.activation_group = QGroupBox()
+        self.activation_group.setStyleSheet(
+            "QGroupBox { border: none; margin: 0; padding: 0; }"
+        )
         layout = QVBoxLayout(self.activation_group)
 
         # Explanation about why we need the email
@@ -303,12 +312,11 @@ class AISegmentationDockWidget(QDockWidget):
         get_code_button.clicked.connect(self._on_get_code_clicked)
         layout.addWidget(get_code_button)
 
-        # Code input label
+        # Code input section - compact
         code_label = QLabel(tr("Then paste your code:"))
         code_label.setStyleSheet("font-size: 11px; margin-top: 6px; color: #CCCCCC;")
         layout.addWidget(code_label)
 
-        # Code input section - compact
         code_layout = QHBoxLayout()
         code_layout.setSpacing(6)
 
@@ -367,12 +375,12 @@ class AISegmentationDockWidget(QDockWidget):
         self.layer_combo.setToolTip(tr("Select a file-based raster layer (GeoTIFF, etc.)"))
         layout.addWidget(self.layer_combo)
 
-        # Warning container with icon and text - yellow background with white text
+        # Warning container with icon and text - yellow background with dark text
         self.no_rasters_widget = QWidget()
         self.no_rasters_widget.setStyleSheet(
             "QWidget { background-color: rgba(255, 193, 7, 0.4); "
             "border: 1px solid rgba(255, 152, 0, 0.6); border-radius: 4px; }"
-            "QLabel { background: transparent; border: none; color: white; }"
+            "QLabel { background: transparent; border: none; color: #333333; }"
         )
         no_rasters_layout = QHBoxLayout(self.no_rasters_widget)
         no_rasters_layout.setContentsMargins(8, 8, 8, 8)
@@ -663,12 +671,12 @@ class AISegmentationDockWidget(QDockWidget):
         refine_content_layout.setContentsMargins(10, 10, 10, 10)
         refine_content_layout.setSpacing(8)
 
-        # 1. Expand/Contract: SpinBox with +/- buttons (-30 to +30)
+        # 1. Expand/Contract: SpinBox with +/- buttons (-1000 to +1000)
         expand_layout = QHBoxLayout()
         expand_label = QLabel(tr("Expand/Contract:"))
         expand_label.setToolTip(tr("Positive = expand outward, Negative = shrink inward"))
         self.expand_spinbox = QSpinBox()
-        self.expand_spinbox.setRange(-100, 100)
+        self.expand_spinbox.setRange(-1000, 1000)
         self.expand_spinbox.setValue(0)
         self.expand_spinbox.setSuffix(" px")
         self.expand_spinbox.setMinimumWidth(80)
@@ -677,12 +685,12 @@ class AISegmentationDockWidget(QDockWidget):
         expand_layout.addWidget(self.expand_spinbox)
         refine_content_layout.addLayout(expand_layout)
 
-        # 2. Simplify outline: SpinBox (0 to 20) - reduces small variations in the outline
+        # 2. Simplify outline: SpinBox (0 to 1000) - reduces small variations in the outline
         simplify_layout = QHBoxLayout()
         simplify_label = QLabel(tr("Simplify outline:"))
         simplify_label.setToolTip(tr("Reduce small variations in the outline (0 = no change)"))
         self.simplify_spinbox = QSpinBox()
-        self.simplify_spinbox.setRange(0, 50)
+        self.simplify_spinbox.setRange(0, 1000)
         self.simplify_spinbox.setValue(4)  # Default to 4 for smoother outlines
         self.simplify_spinbox.setMinimumWidth(80)
         simplify_layout.addWidget(simplify_label)
@@ -782,6 +790,63 @@ class AISegmentationDockWidget(QDockWidget):
         self.fill_holes_checkbox.blockSignals(False)
         self.min_area_spinbox.blockSignals(False)
 
+    def _setup_update_notification(self):
+        """Setup the update notification widget (hidden by default)."""
+        self.update_notification_widget = QWidget()
+        self.update_notification_widget.setStyleSheet(
+            "QWidget { background-color: rgba(255, 152, 0, 0.15); "
+            "border: 1px solid rgba(255, 152, 0, 0.4); border-radius: 4px; }"
+            "QLabel { background: transparent; border: none; }"
+        )
+        notif_layout = QHBoxLayout(self.update_notification_widget)
+        notif_layout.setContentsMargins(8, 6, 8, 6)
+        notif_layout.setSpacing(8)
+
+        # Warning icon
+        notif_icon_label = QLabel()
+        style = self.update_notification_widget.style()
+        notif_icon = style.standardIcon(style.SP_MessageBoxWarning)
+        notif_icon_label.setPixmap(notif_icon.pixmap(14, 14))
+        notif_icon_label.setFixedSize(14, 14)
+        notif_layout.addWidget(notif_icon_label, 0, Qt.AlignTop)
+
+        self.update_notification_label = QLabel("")
+        self.update_notification_label.setWordWrap(True)
+        self.update_notification_label.setStyleSheet(
+            "font-size: 11px; color: palette(text);")
+        self.update_notification_label.setOpenExternalLinks(False)
+        self.update_notification_label.linkActivated.connect(
+            self._on_open_plugin_manager)
+        notif_layout.addWidget(self.update_notification_label, 1)
+
+        self.update_notification_widget.setVisible(False)
+        self.main_layout.addWidget(self.update_notification_widget)
+
+    def check_for_updates(self):
+        """Check if a newer version is available in the QGIS plugin repository."""
+        try:
+            from pyplugin_installer.installer_data import plugins
+            plugin_data = plugins.all().get('QGIS_AI-Segmentation')
+            if plugin_data and plugin_data.get('status') == 'upgradeable':
+                available_version = plugin_data.get(
+                    'version_available', '?')
+                text = '{} <a href="#update" style="color: #e65100;">{}</a>'.format(
+                    tr("New version available ({version}). This plugin is in beta and evolves quickly.").format(
+                        version=available_version),
+                    tr("Update now"))
+                self.update_notification_label.setText(text)
+                self.update_notification_widget.setVisible(True)
+        except Exception:
+            pass  # No repo data yet, dev install, etc.
+
+    def _on_open_plugin_manager(self, link=None):
+        """Open the QGIS Plugin Manager on the Upgradeable tab."""
+        try:
+            from qgis.utils import iface
+            iface.pluginManagerInterface().showPluginManager(4)
+        except Exception:
+            pass
+
     def _setup_about_section(self):
         """Setup the links section."""
         # Simple horizontal layout for links, aligned right with larger font
@@ -800,6 +865,15 @@ class AISegmentationDockWidget(QDockWidget):
         report_link.setCursor(Qt.PointingHandCursor)
         report_link.linkActivated.connect(self._on_report_bug)
         links_layout.addWidget(report_link)
+
+        # Suggest a feature button (styled as link)
+        suggest_link = QLabel(
+            '<a href="#" style="color: #1976d2;">' + tr("Suggest a feature") + '</a>'
+        )
+        suggest_link.setStyleSheet("font-size: 13px;")
+        suggest_link.setCursor(Qt.PointingHandCursor)
+        suggest_link.linkActivated.connect(self._on_suggest_feature)
+        links_layout.addWidget(suggest_link)
 
         # Tutorial & Docs link (merged)
         docs_link = QLabel(
@@ -825,6 +899,11 @@ class AISegmentationDockWidget(QDockWidget):
         """Open the bug report dialog."""
         from .error_report_dialog import show_bug_report
         show_bug_report(self)
+
+    def _on_suggest_feature(self):
+        """Open the suggest a feature dialog."""
+        from .error_report_dialog import show_suggest_feature
+        show_suggest_feature(self)
 
     def _on_batch_mode_checkbox_changed(self, state: int):
         """Handle batch mode checkbox change."""
@@ -908,12 +987,18 @@ class AISegmentationDockWidget(QDockWidget):
         else:
             self.checkpoint_group.setEnabled(True)
 
-        # Activation section: show if deps OK but not activated AND popup was shown/closed
+        # Activation section: show ONLY after deps+model ready, not activated, popup shown
         deps_ok = self._dependencies_ok
+        checkpoint_ok = self._checkpoint_ok
         not_activated = not self._plugin_activated
         popup_shown = self._activation_popup_shown
-        show_activation = deps_ok and not_activated and popup_shown
+        show_activation = deps_ok and checkpoint_ok and not_activated and popup_shown
         self.activation_group.setVisible(show_activation)
+
+        # When showing activation panel, hide setup sections
+        if show_activation:
+            self.welcome_widget.setVisible(False)
+            self.checkpoint_group.setVisible(False)
 
         self._update_ui_state()
 
@@ -927,9 +1012,6 @@ class AISegmentationDockWidget(QDockWidget):
     def _on_download_clicked(self):
         self.download_button.setEnabled(False)
         self.download_checkpoint_requested.emit()
-
-    def _on_cancel_download_clicked(self):
-        self.cancel_download_requested.emit()
 
     def _on_cancel_prep_clicked(self):
         reply = QMessageBox.question(
@@ -992,9 +1074,35 @@ class AISegmentationDockWidget(QDockWidget):
     def _on_stop_clicked(self):
         self.stop_segmentation_requested.emit()
 
+    def update_gpu_info(self):
+        """Show GPU info box in dependencies section if NVIDIA GPU detected."""
+        if sys.platform == "darwin":
+            return
+        try:
+            from ..core.venv_manager import detect_nvidia_gpu
+            has_gpu, gpu_info = detect_nvidia_gpu()
+            if has_gpu:
+                gpu_name = gpu_info.get("name", "NVIDIA GPU")
+                self.gpu_info_box.setText(
+                    tr("{gpu_name} detected :) GPU dependencies will be "
+                       "installed, so it takes a bit longer, but segmentation "
+                       "will be 5 to 10x faster and handle large rasters "
+                       "easily.").format(gpu_name=gpu_name)
+                )
+                self.gpu_info_box.setVisible(True)
+        except Exception:
+            pass
+
     def get_cuda_enabled(self) -> bool:
-        """Return whether the CUDA checkbox is checked."""
-        return self.cuda_checkbox.isChecked()
+        """Auto-detect NVIDIA GPU and return whether CUDA should be used."""
+        if sys.platform == "darwin":
+            return False
+        try:
+            from ..core.venv_manager import detect_nvidia_gpu
+            has_gpu, _ = detect_nvidia_gpu()
+            return has_gpu
+        except Exception:
+            return False
 
     def set_device_info(self, info: str):
         """No-op: device info box removed from UI."""
@@ -1016,6 +1124,7 @@ class AISegmentationDockWidget(QDockWidget):
             self.cancel_deps_button.setVisible(False)
             self.deps_progress.setVisible(False)
             self.deps_progress_label.setVisible(False)
+            self.gpu_info_box.setVisible(False)
             self.deps_group.setVisible(False)
         else:
             self.deps_status_label.setStyleSheet("color: #CCCCCC;")
@@ -1048,6 +1157,10 @@ class AISegmentationDockWidget(QDockWidget):
 
         self.deps_progress_label.setText(f"{message}{time_info}")
 
+        # Detect update mode from button text set by set_dependency_status()
+        is_update = self.install_button.text() in (
+            tr("Update Dependencies"), tr("Updating..."))
+
         if percent == 0:
             self._install_start_time = time.time()
             self._current_progress = 0
@@ -1056,8 +1169,12 @@ class AISegmentationDockWidget(QDockWidget):
             self.deps_progress_label.setVisible(True)
             self.cancel_deps_button.setVisible(True)
             self.install_button.setEnabled(False)
-            self.install_button.setText(tr("Installing..."))
-            self.deps_status_label.setText(tr("Installing dependencies..."))
+            if is_update:
+                self.install_button.setText(tr("Updating..."))
+                self.deps_status_label.setText(tr("Updating dependencies..."))
+            else:
+                self.install_button.setText(tr("Installing..."))
+                self.deps_status_label.setText(tr("Installing dependencies..."))
             self._progress_timer.start(500)
         elif percent >= 100 or "cancel" in message.lower() or "failed" in message.lower():
             self._progress_timer.stop()
@@ -1067,7 +1184,10 @@ class AISegmentationDockWidget(QDockWidget):
             self.deps_progress_label.setVisible(False)
             self.cancel_deps_button.setVisible(False)
             self.install_button.setEnabled(True)
-            self.install_button.setText(tr("Install Dependencies"))
+            if is_update:
+                self.install_button.setText(tr("Update Dependencies"))
+            else:
+                self.install_button.setText(tr("Install Dependencies"))
             if "cancel" in message.lower():
                 self.deps_status_label.setText(tr("Installation cancelled"))
             elif "failed" in message.lower():
@@ -1116,18 +1236,14 @@ class AISegmentationDockWidget(QDockWidget):
         if percent == 0:
             self.checkpoint_progress.setVisible(True)
             self.checkpoint_progress_label.setVisible(True)
-            self.cancel_download_button.setVisible(True)
             self.download_button.setEnabled(False)
             self.download_button.setText(tr("Downloading..."))
             self.checkpoint_status_label.setText(tr("Model downloading..."))
-        elif percent >= 100 or "cancel" in message.lower():
+        elif percent >= 100:
             self.checkpoint_progress.setVisible(False)
             self.checkpoint_progress_label.setVisible(False)
-            self.cancel_download_button.setVisible(False)
             self.download_button.setEnabled(True)
             self.download_button.setText(tr("Download AI Segmentation Model (~375MB)"))
-            if "cancel" in message.lower():
-                self.checkpoint_status_label.setText(tr("Download cancelled"))
 
     def set_preparation_progress(self, percent: int, message: str, cache_path: str = None):
         import time
@@ -1147,16 +1263,42 @@ class AISegmentationDockWidget(QDockWidget):
 
         self.prep_status_label.setText(f"{message}{time_info}")
 
+        # Show warning after 10 minutes of encoding (once)
+        is_encoding = self._encoding_start_time and 0 < percent < 100
+        if not self._slow_encoding_warned and is_encoding:
+            elapsed = time.time() - self._encoding_start_time
+            if elapsed > 600:
+                self._slow_encoding_warned = True
+                self.encoding_info_label.setText(
+                    "⚠️ {}\n{}".format(
+                        tr("Encoding is taking a long time."),
+                        tr("To speed up, reduce the image size or resolution before importing."))
+                )
+                self.encoding_info_label.setStyleSheet(
+                    "background-color: rgba(230, 160, 0, 0.18); padding: 8px; "
+                    "border-radius: 4px; font-size: 11px; "
+                    "border: 1px solid rgba(230, 160, 0, 0.4); "
+                    "color: palette(text);"
+                )
+
         if percent == 0:
             self._encoding_start_time = time.time()
+            self._slow_encoding_warned = False
             self.prep_progress.setVisible(True)
             self.prep_status_label.setVisible(True)
             self.start_button.setVisible(False)
+            self.batch_mode_checkbox.setVisible(False)
             self.cancel_prep_button.setVisible(True)
             self.encoding_info_label.setText(
                 "⏳ {}\n{}".format(
                     tr("Encoding this image for AI segmentation..."),
                     tr("This is stored permanently, no waiting next time :)"))
+            )
+            self.encoding_info_label.setStyleSheet(
+                "background-color: rgba(46, 125, 50, 0.15); padding: 8px; "
+                "border-radius: 4px; font-size: 11px; "
+                "border: 1px solid rgba(46, 125, 50, 0.3); "
+                "color: palette(text);"
             )
             self.encoding_info_label.setVisible(True)
         elif percent >= 100 or "cancel" in message.lower():
@@ -1164,8 +1306,17 @@ class AISegmentationDockWidget(QDockWidget):
             self.prep_status_label.setVisible(False)
             self.cancel_prep_button.setVisible(False)
             self.encoding_info_label.setVisible(False)
+            # Restore green style for next time
+            self.encoding_info_label.setStyleSheet(
+                "background-color: rgba(46, 125, 50, 0.15); padding: 8px; "
+                "border-radius: 4px; font-size: 11px; "
+                "border: 1px solid rgba(46, 125, 50, 0.3); "
+                "color: palette(text);"
+            )
             self.start_button.setVisible(True)
+            self.batch_mode_checkbox.setVisible(True)
             self._encoding_start_time = None
+            self._slow_encoding_warned = False
             self._update_ui_state()
 
     def set_encoding_cache_path(self, cache_path: str):
@@ -1228,6 +1379,7 @@ class AISegmentationDockWidget(QDockWidget):
         else:
             # Not segmenting - hide all segmentation buttons, show start controls
             self.start_container.setVisible(True)
+            self.batch_mode_checkbox.setVisible(True)
             self.batch_mode_checkbox.setEnabled(True)  # Can change mode when not segmenting
             self.instructions_label.setVisible(False)
             self.refine_group.setVisible(False)
@@ -1397,6 +1549,7 @@ class AISegmentationDockWidget(QDockWidget):
 
         excluded_layers = []
         all_raster_count = 0
+        web_service_count = 0
 
         for layer in QgsProject.instance().mapLayers().values():
             if layer.type() != layer.RasterLayer:
@@ -1404,27 +1557,27 @@ class AISegmentationDockWidget(QDockWidget):
             # Skip web services
             provider = layer.dataProvider()
             if provider and provider.name() in ['wms', 'wmts', 'xyz', 'arcgismapserver', 'wcs']:
+                web_service_count += 1
                 continue
 
             all_raster_count += 1
-            if not self._is_layer_georeferenced(layer):
-                excluded_layers.append(layer)
+            # Note: We now support non-georeferenced images (pixel coordinates mode)
+            # No longer excluding them - they will work automatically
 
         self.layer_combo.setExceptedLayerList(excluded_layers)
 
-        # Update warning message based on situation
-        compatible_count = all_raster_count - len(excluded_layers)
-
-        if compatible_count == 0 and all_raster_count > 0:
-            # Has rasters but none are georeferenced
-            self.no_rasters_label.setText(
-                tr("No compatible raster found. {count} layer(s) excluded (PNG/JPG without georeferencing). Use GeoTIFF format.").format(count=all_raster_count)
-            )
-        else:
-            # Default message
-            self.no_rasters_label.setText(
-                tr("No compatible raster found. Add a GeoTIFF or georeferenced image to your project.")
-            )
+        # Update warning message
+        if all_raster_count == 0:
+            if web_service_count > 0:
+                # Only web services detected (not supported)
+                self.no_rasters_label.setText(
+                    tr("Found {count} web layer(s), but web services are not supported. Please add a local image file (GeoTIFF, PNG, JPG, etc.).").format(count=web_service_count)
+                )
+            else:
+                # No images at all
+                self.no_rasters_label.setText(
+                    tr("No image found. Please add an image file to your project (GeoTIFF, PNG, JPG, etc.).")
+                )
 
     def _update_ui_state(self):
         # Update layer filter first
@@ -1444,7 +1597,9 @@ class AISegmentationDockWidget(QDockWidget):
         self.start_button.setEnabled(can_start and not self._segmentation_active)
 
     def show_activation_dialog(self):
-        """Show the activation dialog (called from plugin during install)."""
+        """Show the activation dialog (popup). Only shown once per session."""
+        if self._activation_popup_shown:
+            return
         from .activation_dialog import ActivationDialog
 
         self._activation_popup_shown = True
@@ -1460,6 +1615,17 @@ class AISegmentationDockWidget(QDockWidget):
         """Handle activation from dialog."""
         self._plugin_activated = True
         self._update_full_ui()
+
+    def cleanup_signals(self):
+        """Disconnect project signals to prevent accumulation on plugin reload."""
+        try:
+            QgsProject.instance().layersAdded.disconnect(self._on_layers_added)
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            QgsProject.instance().layersRemoved.disconnect(self._on_layers_removed)
+        except (TypeError, RuntimeError):
+            pass
 
     def is_activated(self) -> bool:
         """Check if the plugin is activated."""

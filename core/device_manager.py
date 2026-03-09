@@ -19,35 +19,86 @@ def get_optimal_device() -> "torch.device":
     if _cached_device is not None:
         return _cached_device
 
-    import torch
+    try:
+        import torch
+    except OSError as e:
+        # Windows DLL loading error (shm.dll, etc.)
+        if "shm.dll" in str(e) or "DLL" in str(e).upper():
+            error_msg = (
+                "PyTorch DLL loading failed on Windows. "
+                "This usually means Visual C++ Redistributables are missing. "
+                "Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                "Error: {}".format(str(e))
+            )
+            QgsMessageLog.logMessage(error_msg, "AI Segmentation", level=Qgis.Critical)
+            _cached_device = None
+            _device_info = "Error: PyTorch DLL failed"
+            raise RuntimeError(error_msg)
+        else:
+            raise
+    except ImportError as e:
+        error_msg = "Failed to import PyTorch: {}".format(str(e))
+        QgsMessageLog.logMessage(error_msg, "AI Segmentation", level=Qgis.Critical)
+        raise
 
-    if torch.cuda.is_available():
-        gpu_name = torch.cuda.get_device_name(0)
-        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    try:
+        cuda_available = torch.cuda.is_available()
+    except Exception as e:
+        QgsMessageLog.logMessage(
+            "torch.cuda.is_available() failed ({}), skipping CUDA".format(e),
+            "AI Segmentation",
+            level=Qgis.Warning
+        )
+        cuda_available = False
 
-        # Check minimum GPU memory (2 GB needed for SAM inference)
-        if gpu_memory_gb < 2.0:
+    if cuda_available:
+        best_idx = -1
+        best_mem = 0.0
+        best_name = None
+
+        try:
+            count = torch.cuda.device_count()
+            for i in range(count):
+                try:
+                    props = torch.cuda.get_device_properties(i)
+                    mem_gb = props.total_memory / (1024**3)
+                    if mem_gb >= 2.0 and mem_gb > best_mem:
+                        best_mem = mem_gb
+                        best_idx = i
+                        best_name = props.name
+                except Exception:
+                    continue
+        except Exception as e:
             QgsMessageLog.logMessage(
-                "GPU has {:.1f}GB memory (<2GB minimum), falling back to CPU".format(
-                    gpu_memory_gb),
+                "Cannot query CUDA device info ({}), falling back to CPU".format(e),
                 "AI Segmentation",
                 level=Qgis.Warning
             )
+
+        if best_idx < 0:
+            if best_mem > 0:
+                QgsMessageLog.logMessage(
+                    "No GPU with >=2GB memory found, falling back to CPU",
+                    "AI Segmentation",
+                    level=Qgis.Warning
+                )
         else:
             # Test that GPU kernels actually work with a small allocation
+            cuda_dev = "cuda:{}".format(best_idx)
             try:
-                test = torch.zeros(1, device="cuda")
+                test = torch.zeros(1, device=cuda_dev)
                 _ = test + 1
-                torch.cuda.synchronize()
+                torch.cuda.synchronize(best_idx)
                 del test
                 torch.cuda.empty_cache()
 
-                _cached_device = torch.device("cuda")
+                _cached_device = torch.device(cuda_dev)
                 _device_info = "NVIDIA GPU ({}, {:.1f}GB)".format(
-                    gpu_name, gpu_memory_gb)
+                    best_name, best_mem)
                 _configure_cuda_optimizations()
                 QgsMessageLog.logMessage(
-                    "Using CUDA acceleration: {}".format(gpu_name),
+                    "Using CUDA acceleration: {} (device {})".format(
+                        best_name, best_idx),
                     "AI Segmentation",
                     level=Qgis.Info
                 )
@@ -96,19 +147,26 @@ def get_optimal_device() -> "torch.device":
 def _configure_cuda_optimizations():
     import torch
 
-    torch.backends.cudnn.enabled = True
-    torch.backends.cudnn.benchmark = True
+    try:
+        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.benchmark = True
 
-    if hasattr(torch.backends.cudnn, 'allow_tf32'):
-        torch.backends.cudnn.allow_tf32 = True
-    if hasattr(torch, 'set_float32_matmul_precision'):
-        torch.set_float32_matmul_precision('high')
+        if hasattr(torch.backends.cudnn, 'allow_tf32'):
+            torch.backends.cudnn.allow_tf32 = True
+        if hasattr(torch, 'set_float32_matmul_precision'):
+            torch.set_float32_matmul_precision('high')
 
-    QgsMessageLog.logMessage(
-        "CUDA optimizations enabled: cudnn.benchmark=True",
-        "AI Segmentation",
-        level=Qgis.Info
-    )
+        QgsMessageLog.logMessage(
+            "CUDA optimizations enabled: cudnn.benchmark=True",
+            "AI Segmentation",
+            level=Qgis.Info
+        )
+    except Exception as e:
+        QgsMessageLog.logMessage(
+            "Failed to configure CUDA optimizations: {}".format(e),
+            "AI Segmentation",
+            level=Qgis.Warning
+        )
 
 
 def _configure_mps_optimizations():
@@ -186,14 +244,34 @@ def get_device_capabilities() -> dict:
         except Exception:
             pass
 
-    caps["cuda_available"] = torch.cuda.is_available()
+    try:
+        caps["cuda_available"] = torch.cuda.is_available()
+    except Exception:
+        caps["cuda_available"] = False
+
     if caps["cuda_available"]:
-        caps["cuda_device_count"] = torch.cuda.device_count()
-        caps["cuda_device_name"] = torch.cuda.get_device_name(0)
-        props = torch.cuda.get_device_properties(0)
-        caps["cuda_memory_gb"] = props.total_memory / (1024**3)
-        caps["cuda_compute_capability"] = f"{props.major}.{props.minor}"
-        caps["recommended_device"] = "cuda"
+        try:
+            count = torch.cuda.device_count()
+            caps["cuda_device_count"] = count
+            best_idx = 0
+            best_mem = 0.0
+            for i in range(count):
+                try:
+                    mem = torch.cuda.get_device_properties(i).total_memory
+                    if mem > best_mem:
+                        best_mem = mem
+                        best_idx = i
+                except Exception:
+                    continue
+            caps["cuda_device_name"] = torch.cuda.get_device_name(best_idx)
+            props = torch.cuda.get_device_properties(best_idx)
+            caps["cuda_memory_gb"] = props.total_memory / (1024**3)
+            caps["cuda_compute_capability"] = "{}.{}".format(
+                props.major, props.minor)
+            caps["cuda_device_index"] = best_idx
+            caps["recommended_device"] = "cuda"
+        except Exception:
+            pass
 
     return caps
 

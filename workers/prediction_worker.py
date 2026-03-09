@@ -1,11 +1,42 @@
 #!/usr/bin/env python3
 import sys
+import os
+import gc
 import json
 import base64
-import numpy as np
-import torch
-import torch.nn as nn
-from typing import Tuple, Optional
+
+# Ensure consistent GPU ordering on multi-GPU systems
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+
+try:
+    import numpy as np  # noqa: E402
+    import torch  # noqa: E402
+    import torch.nn as nn  # noqa: E402
+    from typing import Tuple, Optional  # noqa: E402
+except ImportError as e:
+    error_msg = {
+        "type": "error",
+        "message": "Failed to import dependencies: {}. "
+                   "Please reinstall dependencies.".format(str(e))
+    }
+    print(json.dumps(error_msg), flush=True)
+    sys.exit(1)
+except OSError as e:
+    # Catch Windows DLL loading errors (shm.dll, etc.)
+    if "shm.dll" in str(e) or "DLL" in str(e).upper():
+        error_msg = {
+            "type": "error",
+            "message": "PyTorch DLL error (Windows): {}. "
+                       "This usually means Visual C++ Redistributables are missing. "
+                       "Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe".format(str(e))
+        }
+    else:
+        error_msg = {
+            "type": "error",
+            "message": "Failed to load PyTorch: {}".format(str(e))
+        }
+    print(json.dumps(error_msg), flush=True)
+    sys.exit(1)
 
 
 class FakeImageEncoderViT(nn.Module):
@@ -62,7 +93,27 @@ def build_sam_vit_b_no_encoder(checkpoint: Optional[str] = None):
 def get_optimal_device():
     try:
         if torch.cuda.is_available():
-            return torch.device("cuda")
+            best_idx = -1
+            best_mem = 0
+            count = torch.cuda.device_count()
+            for i in range(count):
+                try:
+                    mem = torch.cuda.get_device_properties(i).total_memory
+                    if mem >= 2 * 1024 ** 3 and mem > best_mem:
+                        best_mem = mem
+                        best_idx = i
+                except Exception:
+                    continue
+            if best_idx < 0:
+                return torch.device("cpu")
+            # Verify CUDA kernels actually work
+            cuda_dev = "cuda:{}".format(best_idx)
+            t = torch.zeros(1, device=cuda_dev)
+            _ = t + 1
+            torch.cuda.synchronize(best_idx)
+            del t
+            torch.cuda.empty_cache()
+            return torch.device(cuda_dev)
         elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             return torch.device("mps")
         else:
@@ -75,6 +126,10 @@ class SamPredictorNoImgEncoder:
     def __init__(self, sam_model, device: Optional[torch.device] = None) -> None:
         self.model = sam_model
         self.device = device if device is not None else get_optimal_device()
+        # Free memory before loading model onto GPU
+        if self.device.type == "cuda":
+            gc.collect()
+            torch.cuda.empty_cache()
         self.model.to(self.device)
 
         # Verify CUDA kernels are available for this GPU
@@ -288,22 +343,29 @@ def main():
                             mask_input=mask_input,
                             multimask_output=multimask_output,
                         )
-                    except RuntimeError as e:
-                        if "out of memory" in str(e).lower() and predictor.device.type != "cpu":
-                            # GPU OOM: fall back to CPU and retry
-                            if predictor.device.type == "cuda":
-                                torch.cuda.empty_cache()
+                    except RuntimeError:
+                        if predictor.device.type != "cpu":
+                            # GPU error (OOM, illegal access, no kernel image, etc.)
+                            # Fall back to CPU and retry
+                            try:
+                                if predictor.device.type == "cuda":
+                                    torch.cuda.empty_cache()
+                            except Exception:
+                                pass
                             predictor.device = torch.device("cpu")
                             predictor.model.to(predictor.device)
-                            # Re-set features on CPU
                             if predictor.features is not None:
                                 predictor.features = predictor.features.to(predictor.device)
-                            masks, scores, low_res_masks = predictor.predict(
-                                point_coords=point_coords,
-                                point_labels=point_labels,
-                                mask_input=mask_input,
-                                multimask_output=multimask_output,
-                            )
+                            try:
+                                masks, scores, low_res_masks = predictor.predict(
+                                    point_coords=point_coords,
+                                    point_labels=point_labels,
+                                    mask_input=mask_input,
+                                    multimask_output=multimask_output,
+                                )
+                            except Exception as cpu_err:
+                                send_error("CPU retry also failed: {}".format(cpu_err))
+                                continue
                         else:
                             raise
 
