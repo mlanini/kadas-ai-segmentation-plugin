@@ -582,7 +582,6 @@ class AISegmentationPlugin:
             self.dock_widget.install_dependencies_requested.connect(self._on_install_requested)
             self.dock_widget.cancel_deps_install_requested.connect(self._on_cancel_deps_install)
             self.dock_widget.download_checkpoint_requested.connect(self._on_download_checkpoint_requested)
-            self.dock_widget.cancel_download_requested.connect(self._on_cancel_download)
             self.dock_widget.cancel_preparation_requested.connect(self._on_cancel_preparation)
             self.dock_widget.start_segmentation_requested.connect(self._on_start_segmentation)
             self.dock_widget.save_polygon_requested.connect(self._on_save_polygon)

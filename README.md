@@ -37,7 +37,6 @@ AI-powered object segmentation for raster imagery in KADAS Albireo 2. Uses Meta'
 
 ## Documentation
 
-- [Testing Guide](KADAS_TESTING.md) - Complete testing walkthrough
 - [Release Notes](RELEASE_NOTES.md) - Version history and changes
 - [GitHub Issues](https://github.com/mlanini/kadas-ai-segmentation-plugin/issues) - Bug reports and features
 

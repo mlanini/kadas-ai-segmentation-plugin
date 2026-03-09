@@ -1301,31 +1301,31 @@ def install_dependencies(
         pip_args.extend(_get_pip_proxy_args())
         pip_args.append(package_spec)
 
-            # For CUDA-enabled torch/torchvision, use PyTorch's CUDA index
-            if is_cuda_package:
-                _, gpu_info = detect_nvidia_gpu()
-                cuda_index = _select_cuda_index(gpu_info)
-                if cuda_index is None:
-                    # Driver too old for any CUDA toolkit -> fall back to CPU
-                    _log(
-                        "Driver too old for CUDA, installing CPU {} instead".format(
-                            package_name),
-                        Qgis.Warning
-                    )
-                    is_cuda_package = False
-                    _cuda_fell_back = True
-                else:
-                    pip_args.extend([
-                        "--index-url",
-                        "https://download.pytorch.org/whl/{}".format(cuda_index)
-                    ])
-                    _log("Using CUDA {} index for {}".format(
-                        cuda_index, package_name), Qgis.Info)
+        # For CUDA-enabled torch/torchvision, use PyTorch's CUDA index
+        if is_cuda_package:
+            _, gpu_info = detect_nvidia_gpu()
+            cuda_index = _select_cuda_index(gpu_info)
+            if cuda_index is None:
+                # Driver too old for any CUDA toolkit -> fall back to CPU
+                _log(
+                    "Driver too old for CUDA, installing CPU {} instead".format(
+                        package_name),
+                    Qgis.Warning
+                )
+                is_cuda_package = False
+                _cuda_fell_back = True
+            else:
+                pip_args.extend([
+                    "--index-url",
+                    "https://download.pytorch.org/whl/{}".format(cuda_index)
+                ])
+                _log("Using CUDA {} index for {}".format(
+                    cuda_index, package_name), Qgis.Info)
 
-            # Use clean env to avoid QGIS PYTHONPATH/PYTHONHOME interference
-            env = _get_clean_env_for_venv()
+        # Use clean env to avoid QGIS PYTHONPATH/PYTHONHOME interference
+        env = _get_clean_env_for_venv()
 
-            subprocess_kwargs = _get_subprocess_kwargs()
+        subprocess_kwargs = _get_subprocess_kwargs()
 
         # Set appropriate timeouts based on package size and network conditions
         # Increased timeouts to handle slow corporate networks/proxies (v0.6.5)
@@ -1467,54 +1467,54 @@ def install_dependencies(
                             if result.returncode == 0:
                                 break
 
-            if result.returncode == 0:
-                _log(f"✓ Successfully installed {package_spec}", Qgis.Success)
-                if progress_callback:
-                    progress_callback(current_progress + progress_per_package, f"✓ {package_name} installed")
-            else:
-                error_msg = result.stderr or result.stdout or f"Return code {result.returncode}"
-                _log(f"✗ Failed to install {package_spec}: {error_msg[:500]}", Qgis.Critical)
+                if result.returncode == 0:
+                    _log(f"✓ Successfully installed {package_spec}", Qgis.Success)
+                    if progress_callback:
+                        progress_callback(pkg_end, f"✓ {package_name} installed")
+                else:
+                    error_msg = result.stderr or result.stdout or f"Return code {result.returncode}"
+                    _log(f"✗ Failed to install {package_spec}: {error_msg[:500]}", Qgis.Critical)
+                    install_failed = True
+                    install_error_msg = error_msg
+                    last_returncode = result.returncode
+                    
+                    # Check for Group Policy error (WinError 1260)
+                    if sys.platform == "win32" and ("1260" in error_msg or "gruppo" in error_msg.lower() or "group" in error_msg.lower()):
+                        _log("Group Policy error detected during package installation", Qgis.Critical)
+                        return False, f"GROUP_POLICY_ERROR: {error_msg[:200]}"
+
+            except subprocess.TimeoutExpired:
+                _log(f"Installation of {package_spec} timed out", Qgis.Critical)
                 install_failed = True
-                install_error_msg = error_msg
-                last_returncode = result.returncode
+                install_error_msg = f"Installation of {package_name} timed out"
+            except Exception as e:
+                _log(f"Exception during installation of {package_spec}: {str(e)}", Qgis.Critical)
+                install_failed = True
+                install_error_msg = f"Error installing {package_name}: {str(e)[:200]}"
                 
                 # Check for Group Policy error (WinError 1260)
-                if sys.platform == "win32" and ("1260" in error_msg or "gruppo" in error_msg.lower() or "group" in error_msg.lower()):
+                error_str = str(e)
+                if sys.platform == "win32" and ("1260" in error_str or "gruppo" in error_str.lower() or "group" in error_str.lower()):
                     _log("Group Policy error detected during package installation", Qgis.Critical)
-                    return False, f"GROUP_POLICY_ERROR: {error_msg[:200]}"
-
-        except subprocess.TimeoutExpired:
-            _log(f"Installation of {package_spec} timed out", Qgis.Critical)
-            install_failed = True
-            install_error_msg = f"Installation of {package_name} timed out"
-        except Exception as e:
-            _log(f"Exception during installation of {package_spec}: {str(e)}", Qgis.Critical)
-            install_failed = True
-            install_error_msg = f"Error installing {package_name}: {str(e)[:200]}"
-            
-            # Check for Group Policy error (WinError 1260)
-            error_str = str(e)
-            if sys.platform == "win32" and ("1260" in error_str or "gruppo" in error_str.lower() or "group" in error_str.lower()):
-                _log("Group Policy error detected during package installation", Qgis.Critical)
-                
-                # If this happens in a manual folder, it means Python execution itself is blocked
-                if is_manual:
-                    error_msg = (
-                        "CRITICAL: Group Policy is blocking Python execution entirely.\n\n"
-                        "This corporate environment has severe restrictions that prevent:\n"
-                        "  1. Creating virtual environments (venv blocked)\n"
-                        "  2. Using virtualenv tool (pip blocked)\n"
-                        "  3. Running Python.exe directly (execution blocked)\n\n"
-                        "This plugin cannot work in this environment.\n\n"
-                        "Please contact your IT administrator to:\n"
-                        "  - Whitelist Python execution (python.exe)\n"
-                        "  - Allow pip package installation\n"
-                        "  - Enable virtual environment creation\n\n"
-                        "Alternatively, use a personal computer without these restrictions."
-                    )
-                    return False, error_msg
-                
-                return False, f"GROUP_POLICY_ERROR: {install_error_msg}"
+                    
+                    # If this happens in a manual folder, it means Python execution itself is blocked
+                    if is_manual:
+                        error_msg = (
+                            "CRITICAL: Group Policy is blocking Python execution entirely.\n\n"
+                            "This corporate environment has severe restrictions that prevent:\n"
+                            "  1. Creating virtual environments (venv blocked)\n"
+                            "  2. Using virtualenv tool (pip blocked)\n"
+                            "  3. Running Python.exe directly (execution blocked)\n\n"
+                            "This plugin cannot work in this environment.\n\n"
+                            "Please contact your IT administrator to:\n"
+                            "  - Whitelist Python execution (python.exe)\n"
+                            "  - Allow pip package installation\n"
+                            "  - Enable virtual environment creation\n\n"
+                            "Alternatively, use a personal computer without these restrictions."
+                        )
+                        return False, error_msg
+                    
+                    return False, f"GROUP_POLICY_ERROR: {install_error_msg}"
 
             # CUDA → CPU silent fallback: if CUDA install failed, retry with CPU wheel
             if install_failed and is_cuda_package:
