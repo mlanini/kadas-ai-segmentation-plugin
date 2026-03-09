@@ -10,11 +10,11 @@ AI-powered object segmentation for raster imagery in KADAS Albireo 2. Uses Meta'
 
 ## Features
 
-- 🧠 **AI-Powered**: Uses SAM2 for state-of-the-art object segmentation
-- 🗺️ **KADAS Native**: Integrated in AI ribbon tab with KADAS optimizations
-- 🔧 **Auto-Setup**: Automatic Python environment and dependency management
-- 🎯 **Interactive**: Click-based positive/negative point segmentation
-- 📦 **Export**: Save polygons to GeoPackage or Shapefile
+- **AI-Powered**: Uses SAM2 for state-of-the-art object segmentation
+- **KADAS Native**: Integrated in AI ribbon tab with KADAS optimizations
+- **Auto-Setup**: Automatic Python environment and dependency management
+- **Interactive**: Click-based positive/negative point segmentation
+- **Export**: Save polygons to GeoPackage or Shapefile
 
 ## Quick Start
 

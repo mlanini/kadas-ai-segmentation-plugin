@@ -219,7 +219,7 @@ class AISegmentationPlugin:
             self.iface = KadasPluginInterface.cast(iface)
         else:
             self.iface = iface
-        self.plugin_dir = Path(__file__).parent.parent.parent
+        self.plugin_dir = Path(__file__).parent
 
         # Initialize logger (STANDARD level for production)
         self.log = get_logger(level="STANDARD")
@@ -367,7 +367,7 @@ class AISegmentationPlugin:
 
         self.action = QAction(
             icon,
-            "AI Segmentation by TerraLab",
+            "AI Segmentation",
             self.iface.mainWindow()
         )
         self.action.setCheckable(True)
