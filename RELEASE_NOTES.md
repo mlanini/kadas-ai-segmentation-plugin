@@ -1,5 +1,37 @@
 # Release Notes
 
+## Version 0.9.5 (2025-06-25)
+
+### Aligned with upstream QGIS AI-Segmentation v0.9.5
+
+**Architecture Changes:**
+- ✅ On-demand crop-based encoding (click-to-encode replaces full-raster pre-encoding)
+- ✅ SAM2 support (Python 3.10+) with SAM1 fallback
+- ✅ Online layer support (WMS, XYZ, WMTS, WCS, ArcGIS)
+- ✅ Fast package installation via uv (Astral)
+
+**New Features:**
+- ✅ Refinement controls: expand, contract, simplify, smooth, fill holes
+- ✅ Frozen crop sessions for multi-area segmentation
+- ✅ Per-point undo with mask state history (30-level cap)
+- ✅ Keyboard shortcuts (Space pan, Ctrl+Z, S, Enter, Esc)
+- ✅ GeoPackage export with layer groups
+- ✅ Plugin update check notifications
+- ✅ CRS transforms (canvas CRS vs raster CRS)
+- ✅ Non-georeferenced image support
+- ✅ Disjoint region detection warnings
+
+**Diagnostics & Error Handling:**
+- ✅ Improved error diagnostics (SSL, DLL, antivirus detection)
+- ✅ Bug report dialog with log collection and path anonymization
+- ✅ PyTorch DLL error detection with VC++ Redistributables guidance
+
+**KADAS-Specific (preserved):**
+- ✅ KADAS Albireo 2 ribbon tab integration
+- ✅ Proxy/VPN support for enterprise networks
+- ✅ KADAS cache directory (~/.kadas_ai_segmentation)
+- ✅ KadasPluginInterface.cast(iface) support
+
 ## Version 0.1.0 (2026-03-09)
 
 ### Initial KADAS Albireo 2 Release
@@ -34,7 +66,7 @@
 - Batch export with configurable formats
 
 **Developer Features:**
-- Comprehensive logging system (`~/.kadas/ai_segmentation.log`)
+- Comprehensive logging system (`~/.kadas_ai_segmentation/ai_segmentation.log`)
 - Error reporting with detailed traceback
 - Menu actions: "Open Log File" and "Help (Online)"
 - Automatic cleanup of legacy installations
@@ -49,9 +81,9 @@
 
 **Installation:**
 - Plugin name: `ai_segmentation` (with underscore)
-- Package name: `ai-segmentation-0.1.0.zip` (with hyphen)
+- Package name: `ai-segmentation-x.x.x.zip` (with hyphen)
 - Auto-deploy option for development
-- Metadata includes QGIS version compatibility (3.0-3.99)
+- Metadata includes QGIS version compatibility (3.22-4.99)
 
 **Known Limitations:**
 - Requires ~3GB disk space (environment + models)
@@ -60,72 +92,11 @@
 - CUDA support requires NVIDIA GPU with compatible drivers
 
 **Documentation:**
-- [README.md](README.md) - Quick start guide
-- [KADAS_TESTING.md](KADAS_TESTING.md) - Complete testing walkthrough
-- [LICENSE](LICENSE) - GPLv2 license
-
-**Credits:**
-- Based on QGIS plugin by TerraLab GmbH
-- SAM2 model by Meta AI Research
-- KADAS adaptation by Michael Lanini
+- [README.md](README.md) — Quick start guide
+- [LICENSE](LICENSE) — GPLv2 license
 
 **Links:**
 - Repository: https://github.com/mlanini/kadas-ai-segmentation-plugin
 - Issues: https://github.com/mlanini/kadas-ai-segmentation-plugin/issues
 - KADAS: https://github.com/kadas-albireo/kadas-albireo2
-
----
-
-## Roadmap
-
-**Planned for 0.2.0:**
-- [ ] Multiple model size support (tiny, small, large)
-- [ ] Batch processing multiple layers
-- [ ] Custom model checkpoint loading
-- [ ] Performance optimizations for large rasters
-- [ ] Additional export formats (GeoJSON, KML)
-
-**Future Considerations:**
-- [ ] Automatic object detection mode (no clicks needed)
-- [ ] Fine-tuning on custom datasets
-- [ ] Integration with other KADAS AI tools
-- [ ] Multi-language support (i18n)
-- [ ] Plugin settings dialog
-
----
-
-## Migration from QGIS Plugin
-
-If you were using the original TerraLab QGIS plugin:
-
-**Changes:**
-- Plugin renamed: "Segment Anything" → "Imagery Segmentation"
-- Flat structure: Files moved from `src/` to root level
-- KADAS interface: Uses `KadasPluginInterface` instead of `QgisInterface`
-- Ribbon integration: AI tab instead of toolbar
-- Import paths: Updated for flat structure
-
-**Compatibility:**
-- Virtual environments are isolated (no conflicts)
-- Existing models can be reused (same checkpoint paths)
-- Export formats unchanged (GeoPackage/Shapefile)
-
-**Migration Steps:**
-1. Uninstall old QGIS plugin (if installed)
-2. Install KADAS version from ZIP
-3. Re-encode layers (old embeddings not compatible)
-4. Dependencies will be reinstalled automatically
-
----
-
-## Changelog Format
-
-This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) principles.
-
-**Categories:**
-- **Added** - New features
-- **Changed** - Changes in existing functionality
-- **Deprecated** - Soon-to-be removed features
-- **Removed** - Removed features
-- **Fixed** - Bug fixes
-- **Security** - Vulnerability fixes
+- Upstream: https://github.com/TerraLabAI/QGIS_AI-Segmentation

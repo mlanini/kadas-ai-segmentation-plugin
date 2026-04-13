@@ -1,49 +1,29 @@
-import os
-import hashlib
-import threading
-from typing import Tuple, Optional, Callable
+from __future__ import annotations
 
-from qgis.core import QgsMessageLog, Qgis
+import hashlib
+import os
+import sys
+import threading
+import time
+from typing import Callable
+
+from qgis.core import Qgis, QgsMessageLog
 from qgis.PyQt.QtCore import QUrl
 from qgis.PyQt.QtNetwork import QNetworkRequest
 
 from .model_config import (
-    CHECKPOINT_URL, CHECKPOINT_FILENAME, CHECKPOINT_SHA256,
+    CHECKPOINT_FILENAME,
+    CHECKPOINT_SHA256,
+    CHECKPOINT_URL,
     USE_SAM2,
 )
 
-
-def _get_cache_base_dir() -> str:
-    """Get the appropriate cache directory for KADAS.
-    
-    Checks AI_SEGMENTATION_CACHE_DIR environment variable first (for corporate environments),
-    then falls back to platform-specific defaults.
-
-    Returns:
-        - Environment variable AI_SEGMENTATION_CACHE_DIR if set
-        - KADAS: ~/.kadas_ai_segmentation (Linux/Mac) or %APPDATA%/kadas_ai_segmentation (Windows)
-    """
-    import sys
-
-    # Check environment variable first (for corporate/IT-managed installations)
-    custom_cache = os.environ.get("AI_SEGMENTATION_CACHE_DIR")
-    if custom_cache:
-        os.makedirs(custom_cache, exist_ok=True)
-        return custom_cache
-
+CACHE_DIR = os.environ.get("AI_SEGMENTATION_CACHE_DIR")
+if not CACHE_DIR:
     if sys.platform == "win32":
-        # Windows: Use %APPDATA%/kadas_ai_segmentation
-        appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
-        base_dir = os.path.join(appdata, "kadas_ai_segmentation")
+        CACHE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "kadas_ai_segmentation")
     else:
-        # Linux/Mac: Use hidden directory in home
-        base_dir = os.path.expanduser("~/.kadas_ai_segmentation")
-
-    os.makedirs(base_dir, exist_ok=True)
-    return base_dir
-
-
-CACHE_DIR = _get_cache_base_dir()
+        CACHE_DIR = os.path.expanduser("~/.kadas_ai_segmentation")
 CHECKPOINTS_DIR = os.path.join(CACHE_DIR, "checkpoints")
 FEATURES_DIR = os.path.join(CACHE_DIR, "features")
 
@@ -51,7 +31,6 @@ SAM_CHECKPOINT_URL = CHECKPOINT_URL
 SAM_CHECKPOINT_FILENAME = CHECKPOINT_FILENAME
 SAM_CHECKPOINT_SHA256 = CHECKPOINT_SHA256
 OLD_CHECKPOINT_FILENAME = "sam_vit_b_01ec64.pth"
-SAM_CHECKPOINT_SHA256 = "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912"  # noqa: S105  # pragma: allowlist secret
 
 
 def get_checkpoints_dir() -> str:
@@ -59,32 +38,102 @@ def get_checkpoints_dir() -> str:
     return CHECKPOINTS_DIR
 
 
-def get_features_dir() -> str:
-    os.makedirs(FEATURES_DIR, exist_ok=True)
-    return FEATURES_DIR
+def _migrate_old_cache_layout():
+    """Migrate old flat cache dirs into the new raster/full/ subfolder layout.
+
+    Old layout: features/rastername_hash/*.tif + rastername_hash.csv
+    New layout: features/rastername_hash/full/*.tif + full.csv
+
+    Only runs once per session (idempotent).
+    """
+    if not os.path.exists(FEATURES_DIR):
+        return
+
+    try:
+        for entry in os.listdir(FEATURES_DIR):
+            entry_path = os.path.join(FEATURES_DIR, entry)
+            if not os.path.isdir(entry_path):
+                continue
+            # Skip already-migrated dirs (contain only subdirs like full/, visible_*)
+            has_tif = any(f.endswith(".tif") for f in os.listdir(entry_path))
+            if not has_tif:
+                continue
+            # Old format detected: tif files directly in the raster folder
+            full_dir = os.path.join(entry_path, "full")
+            os.makedirs(full_dir, exist_ok=True)
+            for fname in os.listdir(entry_path):
+                if fname == "full":
+                    continue
+                src = os.path.join(entry_path, fname)
+                if os.path.isfile(src):
+                    # Rename old CSV to full.csv
+                    if fname.endswith(".csv"):
+                        dst = os.path.join(full_dir, "full.csv")
+                    else:
+                        dst = os.path.join(full_dir, fname)
+                    os.replace(src, dst)
+            QgsMessageLog.logMessage(
+                f"Migrated old cache folder: {entry}",
+                "AI Segmentation", level=Qgis.MessageLevel.Info)
+    except Exception as e:
+        QgsMessageLog.logMessage(
+            f"Cache migration warning: {e}",
+            "AI Segmentation", level=Qgis.MessageLevel.Warning)
 
 
-def get_raster_features_dir(raster_path: str) -> str:
+_cache_migrated = False
+_cache_migration_lock = threading.Lock()
+
+
+def _get_raster_base_dir(raster_path: str) -> str:
+    """Get the base cache directory for a raster (parent of full/ and visible_*/).
+
+    Structure: features/{sanitized_name}_{path_hash}/
+    The hash is based on the raster path only (not the extent).
+    """
     import re
 
-    # Get the raster filename without extension
     raster_filename = os.path.splitext(os.path.basename(raster_path))[0]
 
-    # Sanitize: keep only alphanumeric, underscore, hyphen (replace others with underscore)
-    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', raster_filename)
-    # Limit length to avoid too long folder names
+    sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", raster_filename)
     sanitized_name = sanitized_name[:40]
-    # Remove trailing underscores
-    sanitized_name = sanitized_name.rstrip('_')
+    sanitized_name = sanitized_name.rstrip("_")
 
-    # Add short hash suffix for uniqueness (based on full path)
     # MD5 is used here only for generating a short identifier, not for security
-    raster_hash = hashlib.md5(raster_path.encode(), usedforsecurity=False).hexdigest()[:8]
+    path_hash = hashlib.md5(
+        raster_path.encode(), usedforsecurity=False
+    ).hexdigest()[:8]
 
-    # Combine: rastername_abc12345
-    folder_name = f"{sanitized_name}_{raster_hash}"
+    return os.path.join(FEATURES_DIR, f"{sanitized_name}_{path_hash}")
 
-    features_path = os.path.join(FEATURES_DIR, folder_name)
+
+def get_raster_features_dir(raster_path: str, visible_extent: tuple = None) -> str:
+    """Get the encoding cache directory for a raster.
+
+    Structure:
+      features/{rastername}_{path_hash}/full/          (full raster)
+      features/{rastername}_{path_hash}/visible_{hash}/ (visible area)
+
+    Each raster gets one parent folder, with subfolders for each encoding type.
+    """
+    global _cache_migrated
+    if not _cache_migrated:
+        with _cache_migration_lock:
+            if not _cache_migrated:
+                _migrate_old_cache_layout()
+                _cache_migrated = True
+
+    base_dir = _get_raster_base_dir(raster_path)
+
+    if visible_extent is None:
+        features_path = os.path.join(base_dir, "full")
+    else:
+        extent_str = f"{visible_extent[0]:.2f}_{visible_extent[1]:.2f}_{visible_extent[2]:.2f}_{visible_extent[3]:.2f}"
+        extent_hash = hashlib.md5(
+            extent_str.encode(), usedforsecurity=False
+        ).hexdigest()[:8]
+        features_path = os.path.join(base_dir, f"visible_{extent_hash}")
+
     os.makedirs(features_path, exist_ok=True)
     return features_path
 
@@ -98,91 +147,57 @@ def checkpoint_exists() -> bool:
 
 
 def verify_checkpoint_hash(filepath: str) -> bool:
-    sha256_hash = hashlib.sha256()
-    with open(filepath, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest() == SAM_CHECKPOINT_SHA256
+    if not SAM_CHECKPOINT_SHA256:
+        # Hash not yet computed, skip verification
+        return True
+    if not os.path.isfile(filepath):
+        QgsMessageLog.logMessage(
+            f"Checkpoint file not found for hash verification: {filepath}",
+            "AI Segmentation", level=Qgis.MessageLevel.Warning)
+        return False
+    try:
+        sha256_hash = hashlib.sha256()
+        with open(filepath, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest() == SAM_CHECKPOINT_SHA256
+    except OSError as e:
+        QgsMessageLog.logMessage(
+            f"Failed to verify checkpoint hash: {e}",
+            "AI Segmentation", level=Qgis.MessageLevel.Warning)
+        return False
+
+
+def _replace_with_retry(src: str, dst: str, max_attempts: int = 5, delay: float = 2.0):
+    """Rename src to dst, retrying on PermissionError (Windows antivirus lock)."""
+    import gc
+    gc.collect()
+    for attempt in range(1, max_attempts + 1):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == max_attempts:
+                raise
+            QgsMessageLog.logMessage(
+                f"File locked, retry {attempt}/{max_attempts} in {delay}s...",
+                "AI Segmentation", level=Qgis.MessageLevel.Warning)
+            time.sleep(delay)
 
 
 def download_checkpoint(
-    progress_callback: Optional[Callable[[int, str], None]] = None
-) -> Tuple[bool, str]:
+    progress_callback: Callable[[int, str], None] | None = None
+) -> tuple[bool, str]:
     """
-    Download SAM checkpoint using KADAS network manager with progress reporting.
-    
-    Implements exponential backoff retry strategy (5, 10, 20, 40, 80s delays)
-    for network resilience in corporate environments (v0.6.5).
+    Download SAM checkpoint using QGIS network manager with progress reporting.
 
     Uses QNetworkAccessManager with a local event loop to provide real-time
-    download progress updates instead of blocking without feedback.
-    
-    Note: Proxy settings are automatically applied by proxy_handler.initialize_proxy()
-    called in plugin initGui(). QgsNetworkAccessManager respects KADAS proxy settings.
+    download progress updates. Supports resuming partial downloads via HTTP
+    Range requests (issue #129).
     """
-    # Exponential backoff configuration (v0.6.5)
-    MAX_RETRIES = 5
-    BACKOFF_DELAYS = [5, 10, 20, 40, 80]  # seconds
-    
-    last_error = ""
-    
-    for attempt in range(MAX_RETRIES):
-        if attempt > 0:
-            delay = BACKOFF_DELAYS[attempt - 1]
-            QgsMessageLog.logMessage(
-                f"Download failed (attempt {attempt}/{MAX_RETRIES}), "
-                f"retrying in {delay}s...",
-                "AI Segmentation",
-                level=Qgis.Warning
-            )
-            if progress_callback:
-                progress_callback(0, f"Retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})...")
-            
-            import time
-            time.sleep(delay)
-        
-        success, message = _download_checkpoint_attempt(progress_callback)
-        
-        if success:
-            return True, message
-        
-        last_error = message
-        QgsMessageLog.logMessage(
-            f"Download attempt {attempt + 1}/{MAX_RETRIES} failed: {message}",
-            "AI Segmentation",
-            level=Qgis.Warning
-        )
-    
-    # All retries exhausted - provide firewall guidance
-    firewall_hint = (
-        "\n\nDownload failed after all retries. "
-        "This may indicate firewall or network restrictions.\n\n"
-        "Please ask your IT department to allow access to:\n"
-        "  - download.pytorch.org\n"
-        "  - githubusercontent.com\n\n"
-        "Or manually download the checkpoint file and place it at:\n"
-        f"  {get_checkpoint_path()}"
-    )
-    
-    QgsMessageLog.logMessage(
-        f"All download attempts failed. Last error: {last_error}{firewall_hint}",
-        "AI Segmentation",
-        level=Qgis.Critical
-    )
-    
-    return False, f"{last_error}{firewall_hint}"
-
-
-def _download_checkpoint_attempt(
-    progress_callback: Optional[Callable[[int, str], None]] = None
-) -> Tuple[bool, str]:
-    """
-    Single download attempt (without retry logic).
-    Internal function called by download_checkpoint() with exponential backoff.
-    """
-    from qgis.PyQt.QtCore import QEventLoop, QTimer
-    from qgis.PyQt.QtNetwork import QNetworkReply
     from qgis.core import QgsNetworkAccessManager
+    from qgis.PyQt.QtCore import QByteArray, QEventLoop, QTimer
+    from qgis.PyQt.QtNetwork import QNetworkReply
 
     checkpoint_path = get_checkpoint_path()
     temp_path = checkpoint_path + ".tmp"
@@ -191,185 +206,253 @@ def _download_checkpoint_attempt(
         QgsMessageLog.logMessage(
             "Checkpoint already exists, verifying...",
             "AI Segmentation",
-            level=Qgis.Info
+            level=Qgis.MessageLevel.Info
         )
         if verify_checkpoint_hash(checkpoint_path):
             return True, "Checkpoint verified"
-        else:
-            QgsMessageLog.logMessage(
-                "Checkpoint hash mismatch, re-downloading...",
-                "AI Segmentation",
-                level=Qgis.Warning
-            )
-            os.remove(checkpoint_path)
+        QgsMessageLog.logMessage(
+            "Checkpoint hash mismatch, re-downloading...",
+            "AI Segmentation",
+            level=Qgis.MessageLevel.Warning
+        )
+        os.remove(checkpoint_path)
 
     if progress_callback:
         progress_callback(0, "Connecting to download server...")
 
-    # State container for progress tracking
-    download_state = {
-        'bytes_received': 0,
-        'bytes_total': 0,
-        'error': None,
-        'data': bytearray()
-    }
+    max_retries = 5
+    last_error = ""
 
-    def on_download_progress(received: int, total: int):
-        """Handle download progress updates."""
-        download_state['bytes_received'] = received
-        download_state['bytes_total'] = total
-
-        if total > 0 and progress_callback:
-            # Calculate percentage (reserve 5% for verification)
-            percent = int((received / total) * 90) + 5
-            mb_received = received / (1024 * 1024)
-            mb_total = total / (1024 * 1024)
-            progress_callback(
-                min(percent, 95),
-                f"Downloading: {mb_received:.1f} / {mb_total:.1f} MB"
-            )
-        elif progress_callback and received > 0:
-            # Unknown total size, show bytes downloaded
-            mb_received = received / (1024 * 1024)
-            progress_callback(50, f"Downloading: {mb_received:.1f} MB...")
-
-    def on_ready_read():
-        """Accumulate downloaded data chunks."""
-        data = reply.readAll()
-        download_state['data'].extend(data.data())
-
-    def on_error(error_code):
-        """Handle download errors."""
-        download_state['error'] = reply.errorString()
-
-    try:
-        # Use KADAS network manager for proxy-aware downloads
-        manager = QgsNetworkAccessManager.instance()
-        qurl = QUrl(SAM_CHECKPOINT_URL)
-        request = QNetworkRequest(qurl)
-
-        # Start the download
-        reply = manager.get(request)
-
-        # Connect progress signals
-        reply.downloadProgress.connect(on_download_progress)
-        reply.readyRead.connect(on_ready_read)
-        reply.errorOccurred.connect(on_error)
-
-        # Create event loop to wait for download completion
-        loop = QEventLoop()
-        reply.finished.connect(loop.quit)
-
-        # Add timeout (20 minutes for ~375MB file on slow connections)
-        timeout = QTimer()
-        timeout.setSingleShot(True)
-        timeout.timeout.connect(loop.quit)
-        timeout.start(1200000)  # 20 minutes
-
-        if progress_callback:
-            progress_callback(5, "Download started...")
-
-        # Run the event loop until download completes
-        loop.exec_()
-
-        # Check for timeout
-        if timeout.isActive():
-            timeout.stop()
-        else:
-            reply.abort()
-            return False, "Download timed out after 20 minutes"
-
-        # Check for errors
-        if reply.error() != QNetworkReply.NoError:
-            error_msg = download_state['error'] or reply.errorString()
-            QgsMessageLog.logMessage(
-                f"Checkpoint download failed: {error_msg}",
-                "AI Segmentation",
-                level=Qgis.Warning
-            )
-            reply.deleteLater()
-            return False, f"Download failed: {error_msg}"
-
-        # Read any remaining data
-        remaining = reply.readAll()
-        if remaining:
-            download_state['data'].extend(remaining.data())
-
-        content = bytes(download_state['data'])
-        reply.deleteLater()
-
-        if len(content) == 0:
-            return False, "Download failed: empty response"
-
-        if progress_callback:
-            mb_total = len(content) / (1024 * 1024)
-            progress_callback(92, f"Downloaded {mb_total:.1f} MB, saving...")
-
-        # Write content to temp file
-        with open(temp_path, 'wb') as f:
-            f.write(content)
-
-        # Check for 0-byte corrupted download (v0.6.5)
-        file_size = os.path.getsize(temp_path)
-        if file_size == 0:
-            os.remove(temp_path)
-            QgsMessageLog.logMessage(
-                "Downloaded checkpoint is 0 bytes (corrupt)",
-                "AI Segmentation",
-                level=Qgis.Critical
-            )
-            return False, "Download corrupted (0 bytes)"
-
-        if progress_callback:
-            progress_callback(95, "Verifying download...")
-
-        if not verify_checkpoint_hash(temp_path):
-            os.remove(temp_path)
-            return False, "Download verification failed - hash mismatch"
-
-        os.replace(temp_path, checkpoint_path)
-
-        if progress_callback:
-            progress_callback(100, "Checkpoint downloaded successfully!")
-
-        QgsMessageLog.logMessage(
-            f"Checkpoint downloaded to: {checkpoint_path}",
-            "AI Segmentation",
-            level=Qgis.Success
-        )
-        return True, "Checkpoint downloaded and verified"
-
-    except Exception as e:
+    for attempt in range(1, max_retries + 1):
+        # Check for existing partial download to resume
+        resume_offset = 0
         if os.path.exists(temp_path):
+            resume_offset = os.path.getsize(temp_path)
+            if resume_offset > 0:
+                QgsMessageLog.logMessage(
+                    f"Resuming download from {resume_offset / (1024 * 1024):.1f} MB",
+                    "AI Segmentation", level=Qgis.MessageLevel.Info)
+
+        # State container for progress tracking
+        download_state = {
+            "bytes_received": 0,
+            "bytes_total": 0,
+            "error": None,
+            "file": None,
+            "resume_offset": resume_offset,
+        }
+
+        def on_download_progress(received, total):
+            download_state["bytes_received"] = received
+            download_state["bytes_total"] = total
+            if progress_callback:
+                actual_received = resume_offset + received
+                actual_total = resume_offset + total if total > 0 else 0
+                if actual_total > 0:
+                    percent = int((actual_received / actual_total) * 90) + 5
+                    mb_recv = actual_received / (1024 * 1024)
+                    mb_tot = actual_total / (1024 * 1024)
+                    progress_callback(
+                        min(percent, 95),
+                        f"Downloading: {mb_recv:.1f} / {mb_tot:.1f} MB")
+                elif actual_received > 0:
+                    mb_recv = actual_received / (1024 * 1024)
+                    progress_callback(
+                        50, f"Downloading: {mb_recv:.1f} MB...")
+
+        def on_ready_read():
+            data = reply.readAll()
+            if download_state["file"] is not None:
+                download_state["file"].write(data.data())
+
+        def on_error(_error_code):
+            download_state["error"] = reply.errorString()
+
+        try:
+            manager = QgsNetworkAccessManager.instance()
+            qurl = QUrl(SAM_CHECKPOINT_URL)
+            request = QNetworkRequest(qurl)
+
+            # Resume from partial download using HTTP Range header
+            if resume_offset > 0:
+                range_header = f"bytes={resume_offset}-"
+                request.setRawHeader(
+                    QByteArray(b"Range"),
+                    QByteArray(range_header.encode("ascii")))
+
+            # Open temp file in append mode for resume, write mode for fresh
             try:
+                if resume_offset > 0:
+                    download_state["file"] = open(temp_path, "ab")
+                else:
+                    download_state["file"] = open(temp_path, "wb")
+            except OSError as file_err:
+                last_error = f"Cannot open download file: {file_err}"
+                QgsMessageLog.logMessage(
+                    last_error, "AI Segmentation", level=Qgis.MessageLevel.Warning)
+                if attempt < max_retries:
+                    time.sleep(min(5 * (2 ** (attempt - 1)), 120))
+                continue
+
+            reply = manager.get(request)
+
+            reply.downloadProgress.connect(on_download_progress)
+            reply.readyRead.connect(on_ready_read)
+            reply.errorOccurred.connect(on_error)
+
+            loop = QEventLoop()
+            reply.finished.connect(loop.quit)
+
+            timeout = QTimer()
+            timeout.setSingleShot(True)
+            timeout.timeout.connect(loop.quit)
+            timeout.start(1200000)  # 20 minutes
+
+            if progress_callback:
+                retry_msg = ""
+                if attempt > 1:
+                    retry_msg = f" (retry {attempt}/{max_retries})"
+                if resume_offset > 0:
+                    progress_callback(
+                        5, f"Resuming download...{retry_msg}")
+                else:
+                    progress_callback(
+                        5, f"Download started...{retry_msg}")
+
+            loop.exec()
+
+            # Check for timeout
+            if timeout.isActive():
+                timeout.stop()
+            else:
+                reply.abort()
+                reply.deleteLater()
+                download_state["file"].close()
+                download_state["file"] = None
+                last_error = "Download timed out after 20 minutes"
+                if attempt < max_retries:
+                    time.sleep(min(5 * (2 ** (attempt - 1)), 120))
+                continue
+
+            # Check if server returned 416 (range not satisfiable)
+            # This means the partial file is invalid, restart from scratch
+            status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+            if status_code == 416:
+                QgsMessageLog.logMessage(
+                    "Server rejected range request, restarting download",
+                    "AI Segmentation", level=Qgis.MessageLevel.Warning)
+                download_state["file"].close()
+                download_state["file"] = None
+                reply.deleteLater()
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+                if attempt < max_retries:
+                    time.sleep(1)
+                continue
+
+            # Check for errors
+            if reply.error() != QNetworkReply.NetworkError.NoError:
+                last_error = download_state["error"] or reply.errorString()
+                QgsMessageLog.logMessage(
+                    f"Checkpoint download attempt {attempt}/{max_retries} failed: {last_error}",
+                    "AI Segmentation", level=Qgis.MessageLevel.Warning)
+                reply.deleteLater()
+                download_state["file"].close()
+                download_state["file"] = None
+                if attempt < max_retries:
+                    wait = min(5 * (2 ** (attempt - 1)), 120)
+                    if progress_callback:
+                        progress_callback(
+                            5, f"Retry {attempt + 1}/{max_retries} in {wait}s...")
+                    time.sleep(wait)
+                continue
+
+            # Flush remaining data
+            remaining = reply.readAll()
+            if remaining:
+                download_state["file"].write(remaining.data())
+            download_state["file"].close()
+            download_state["file"] = None
+            reply.deleteLater()
+
+            # Verify file is not empty
+            file_size = os.path.getsize(temp_path) if os.path.exists(temp_path) else 0
+            if file_size == 0:
+                last_error = "Download failed: empty file"
+                if attempt < max_retries:
+                    time.sleep(min(5 * (2 ** (attempt - 1)), 120))
+                continue
+
+            if progress_callback:
+                mb_total = file_size / (1024 * 1024)
+                progress_callback(
+                    95, f"Verifying {mb_total:.1f} MB download...")
+
+            if not verify_checkpoint_hash(temp_path):
+                # Hash mismatch after full download: partial file was
+                # corrupted, delete and retry from scratch
+                QgsMessageLog.logMessage(
+                    "Hash mismatch, deleting partial file and retrying",
+                    "AI Segmentation", level=Qgis.MessageLevel.Warning)
                 os.remove(temp_path)
-            except OSError:
-                pass
-        QgsMessageLog.logMessage(
-            f"Checkpoint download failed: {str(e)}",
-            "AI Segmentation",
-            level=Qgis.Warning
+                last_error = "Download verification failed - hash mismatch"
+                if attempt < max_retries:
+                    time.sleep(min(5 * (2 ** (attempt - 1)), 120))
+                continue
+
+            _replace_with_retry(temp_path, checkpoint_path)
+
+            # Clean up old SAM1 checkpoint if present (only on SAM2 path)
+            if USE_SAM2:
+                old_checkpoint = os.path.join(
+                    get_checkpoints_dir(), OLD_CHECKPOINT_FILENAME)
+                if os.path.exists(old_checkpoint):
+                    try:
+                        os.remove(old_checkpoint)
+                        QgsMessageLog.logMessage(
+                            f"Removed old checkpoint: {OLD_CHECKPOINT_FILENAME}",
+                            "AI Segmentation", level=Qgis.MessageLevel.Info)
+                    except OSError:
+                        pass
+
+            if progress_callback:
+                progress_callback(100, "Checkpoint downloaded successfully!")
+
+            QgsMessageLog.logMessage(
+                f"Checkpoint downloaded to: {checkpoint_path}",
+                "AI Segmentation", level=Qgis.MessageLevel.Success)
+            return True, "Checkpoint downloaded and verified"
+
+        except Exception as e:
+            last_error = str(e)
+            QgsMessageLog.logMessage(
+                f"Checkpoint download attempt {attempt}/{max_retries} exception: {last_error}",
+                "AI Segmentation", level=Qgis.MessageLevel.Warning)
+            if download_state.get("file") is not None:
+                try:
+                    download_state["file"].close()
+                except Exception:
+                    pass
+                download_state["file"] = None
+            if attempt < max_retries:
+                time.sleep(min(5 * (2 ** (attempt - 1)), 120))
+
+    # All retries exhausted - keep partial file for next resume attempt
+    partial_mb = 0
+    if os.path.exists(temp_path):
+        partial_mb = os.path.getsize(temp_path) / (1024 * 1024)
+    firewall_hint = (
+        " A firewall or proxy may be blocking the download. "
+        "Check your network settings in QGIS (Settings > Options > Network)."
+    )
+    if partial_mb > 0:
+        return False, (
+            f"Download failed after {max_retries} attempts: {last_error}. "
+            f"Partial file ({partial_mb:.1f} MB) saved, will resume on next try.{firewall_hint}"
         )
-        return False, f"Download failed: {str(e)}"
-
-
-def has_features_for_raster(raster_path: str) -> bool:
-    features_dir = get_raster_features_dir(raster_path)
-    csv_path = os.path.join(features_dir, os.path.basename(features_dir) + ".csv")
-    if not os.path.exists(csv_path):
-        return False
-    tif_files = [f for f in os.listdir(features_dir) if f.endswith('.tif')]
-    return len(tif_files) > 0
-
-
-def clear_features_for_raster(raster_path: str) -> bool:
-    features_dir = get_raster_features_dir(raster_path)
-    if os.path.exists(features_dir):
-        import shutil
-        shutil.rmtree(features_dir)
-        os.makedirs(features_dir, exist_ok=True)
-        return True
-    return False
+    return False, f"Download failed after {max_retries} attempts: {last_error}{firewall_hint}"
 
 
 def cleanup_legacy_sam1_data():
@@ -390,13 +473,12 @@ def cleanup_legacy_sam1_data():
             try:
                 os.remove(old_checkpoint)
                 QgsMessageLog.logMessage(
-                    "Removed old SAM1 checkpoint: {}".format(
-                        OLD_CHECKPOINT_FILENAME),
-                    "AI Segmentation", level=Qgis.Info)
+                    f"Removed old SAM1 checkpoint: {OLD_CHECKPOINT_FILENAME}",
+                    "AI Segmentation", level=Qgis.MessageLevel.Info)
             except OSError as e:
                 QgsMessageLog.logMessage(
-                    "Could not remove old checkpoint: {}".format(e),
-                    "AI Segmentation", level=Qgis.Warning)
+                    f"Could not remove old checkpoint: {e}",
+                    "AI Segmentation", level=Qgis.MessageLevel.Warning)
 
     # Remove old features cache (SAM2 does on-demand encoding, no cache needed)
     if os.path.exists(FEATURES_DIR):
@@ -404,8 +486,8 @@ def cleanup_legacy_sam1_data():
             shutil.rmtree(FEATURES_DIR)
             QgsMessageLog.logMessage(
                 "Removed legacy features cache",
-                "AI Segmentation", level=Qgis.Info)
+                "AI Segmentation", level=Qgis.MessageLevel.Info)
         except OSError as e:
             QgsMessageLog.logMessage(
-                "Could not remove features cache: {}".format(e),
-                "AI Segmentation", level=Qgis.Warning)
+                f"Could not remove features cache: {e}",
+                "AI Segmentation", level=Qgis.MessageLevel.Warning)

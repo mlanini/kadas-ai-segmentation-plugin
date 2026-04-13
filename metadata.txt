@@ -1,33 +1,53 @@
 [general]
 name=Imagery Segmentation
-qgisMinimumVersion=3.0
-qgisMaximumVersion=3.99
-description=Segment anything in your raster using AI - KADAS Albireo 2 Compatible
-version=0.1.0
-author=Michael Lanini
+qgisMinimumVersion=3.22
+qgisMaximumVersion=4.99
+description=Segment buildings, vegetation, or any object in your raster using AI, refine & export as vector polygons - KADAS Albireo 2 Compatible
+version=0.9.5
+author=Michael Lanini (KADAS adaptation), Yvann and Lilien from TerraLab (original)
 email=mlanini@proton.me
 license=GPLv2
 
 
 about=
-    • Originally developped by Yvann and Lilien from www.terra-lab.ai
-    • Automatic install of AI model & dependencies
-    • Works on Windows/Mac/Linux
-    • Available in several languages
+    Point-and-click AI segmentation tool that turns raster objects into vector polygons.
+    KADAS Albireo 2 compatible version.
+
+    • Fully automatic: AI model and dependencies install themselves
+
+    • Works on any layer: local rasters (GeoTIFF, JPG, PNG) & online layers (WMS, XYZ tiles)
+
+    • Precise: positive and negative click points control boundaries
+
+    • Refinable: expand, contract, simplify, round corners, fill holes
+
+    • Fast: Real-time segmentation & optimized for your hardware
+
+    • Universal: Windows, macOS, Linux
+
+    • Multilingual: English, French, Portuguese, Spanish, German, Italian
+
     • Compatible with KADAS Albireo 2
-    • Using Meta's AI model for segmentation
-    • Vector layer export
 
 changelog=
+    0.9.5 - Aligned with upstream QGIS AI-Segmentation v0.9.5
+        - On-demand crop-based encoding (click-to-encode instead of full-raster pre-encoding)
+        - SAM2 support (Python 3.10+) with SAM1 fallback
+        - Online layer support (WMS, XYZ, WMTS)
+        - Fast package installation via uv (Astral)
+        - Refinement controls: expand, contract, simplify, smooth, fill holes
+        - Frozen crop sessions for multi-area segmentation
+        - Per-point undo with mask state history
+        - Keyboard shortcuts (Space pan, Ctrl+Z, S, Enter, Esc)
+        - GeoPackage export with layer groups
+        - Plugin update check notifications
+        - Improved error diagnostics (SSL, DLL, antivirus detection)
     0.1.0 - KADAS Albireo 2 compatibility & Enterprise fixes
         - Added KADAS Albireo 2 interface support with custom ribbon tabs
-        - Fixed WinError 1260: Corporate Group Policy compatibility (virtualenv fallback)
+        - Fixed WinError 1260: Corporate Group Policy compatibility
         - Added proxy/VPN support for enterprise networks
-        - Updated to SAM2 support (Python 3.10+) with SAM1 fallback (Python 3.9)
-        - External cache directory (~/.kadas_ai_segmentation/) for better isolation
+        - External cache directory for better isolation
         - Added Swiss locale support (it_CH, fr_CH, de_CH)
-        - Improved dependency management with hash tracking and CUDA upgrades
-        - Legacy installation cleanup for smoother updates
 
 tracker=https://github.com/mlanini/kadas-ai-segmentation-plugin/issues
 repository=https://github.com/mlanini/kadas-ai-segmentation-plugin
@@ -35,7 +55,7 @@ homepage=https://github.com/kadas-albireo/kadas-albireo2
 
 hasProcessingProvider=no
 
-tags=segmentation, AI, image segmentation, TerraLab, feature extraction, SAM, deep learning, remote sensing, satellite, raster, segment anything, IA, segmentation, vectorization, object detection, machine learning, digitizing, automatic, classification, polygon, artificial intelligence, KADAS, Albireo
+tags=segmentation, ai, artificial intelligence, machine learning, deep learning, computer vision, image segmentation, feature extraction, object detection, classification, vectorization, digitizing, raster, satellite, satellite imagery, remote sensing, drone, polygon, export, pytorch, automatic, automation, interactive, building detection, land cover, python, ia, KADAS, Albireo
 
 category=Raster
 icon=resources/icons/icon.png

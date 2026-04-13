@@ -16,11 +16,15 @@ def classFactory(iface):
     # Import late to avoid issues during plugin loading
     from .ai_segmentation_plugin import AISegmentationPlugin
     
-    # Cleanup old installations on first load (moved here from module level)
+    # Cleanup old installations on first load
     try:
         from .core.venv_manager import cleanup_old_libs
-        from .core.checkpoint_manager import cleanup_legacy_sam1_data
         cleanup_old_libs()
+    except Exception:
+        pass  # Don't fail plugin loading due to cleanup errors
+
+    try:
+        from .core.checkpoint_manager import cleanup_legacy_sam1_data
         cleanup_legacy_sam1_data()
     except Exception:
         pass  # Don't fail plugin loading due to cleanup errors

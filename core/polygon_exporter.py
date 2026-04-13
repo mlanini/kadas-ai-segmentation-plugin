@@ -1,37 +1,36 @@
-from typing import List, Tuple, TYPE_CHECKING
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import rasterio
 
 from .venv_manager import ensure_venv_packages_available
+
 ensure_venv_packages_available()
 
 import numpy as np  # noqa: E402
-
 from qgis.core import (  # noqa: E402
-    QgsVectorLayer,
+    Qgis,
     QgsGeometry,
+    QgsLineString,
+    QgsMessageLog,
     QgsPointXY,
     QgsPolygon,
-    QgsLineString,
-    QgsProject,
-    QgsVectorFileWriter,
-    QgsMessageLog,
-    Qgis,
 )
 
 
 def mask_to_polygons_rasterio(
     mask: np.ndarray,
-    transform: 'rasterio.Affine',
+    transform: rasterio.Affine,
     crs: str,
     simplify_tolerance: float = 0.0
-) -> List[QgsGeometry]:
+) -> list[QgsGeometry]:
     if mask is None or mask.sum() == 0:
         QgsMessageLog.logMessage(
             "mask_to_polygons: Empty or None mask",
             "AI Segmentation",
-            level=Qgis.Warning
+            level=Qgis.MessageLevel.Warning
         )
         return []
 
@@ -61,7 +60,7 @@ def mask_to_polygons_rasterio(
         QgsMessageLog.logMessage(
             f"mask_to_polygons: Created {len(geometries)} polygons",
             "AI Segmentation",
-            level=Qgis.Info
+            level=Qgis.MessageLevel.Info
         )
 
         return geometries
@@ -71,7 +70,7 @@ def mask_to_polygons_rasterio(
         QgsMessageLog.logMessage(
             f"Failed to convert mask to polygons: {str(e)}\n{traceback.format_exc()}",
             "AI Segmentation",
-            level=Qgis.Warning
+            level=Qgis.MessageLevel.Warning
         )
         return []
 
@@ -87,7 +86,7 @@ def geojson_to_wkt(geojson: dict) -> str:
             rings.append(f"({points})")
         return f"POLYGON({', '.join(rings)})"
 
-    elif geom_type == "MultiPolygon":
+    if geom_type == "MultiPolygon":
         polygons = []
         for polygon in coords:
             rings = []
@@ -104,12 +103,12 @@ def mask_to_polygons(
     mask: np.ndarray,
     transform_info: dict,
     simplify_tolerance: float = 0.0
-) -> List[QgsGeometry]:
+) -> list[QgsGeometry]:
     if mask is None or mask.sum() == 0:
         QgsMessageLog.logMessage(
             f"mask_to_polygons: Empty or None mask (sum={mask.sum() if mask is not None else 'None'})",
             "AI Segmentation",
-            level=Qgis.Warning
+            level=Qgis.MessageLevel.Warning
         )
         return []
 
@@ -153,7 +152,7 @@ def mask_to_polygons(
         QgsMessageLog.logMessage(
             f"mask_to_polygons error: {str(e)}\n{traceback.format_exc()}",
             "AI Segmentation",
-            level=Qgis.Warning
+            level=Qgis.MessageLevel.Warning
         )
         return mask_to_polygons_fallback(mask, transform_info, simplify_tolerance)
 
@@ -162,7 +161,7 @@ def mask_to_polygons_fallback(
     mask: np.ndarray,
     transform_info: dict,
     simplify_tolerance: float = 0.0
-) -> List[QgsGeometry]:
+) -> list[QgsGeometry]:
     try:
         contours = find_contours(mask)
 
@@ -183,7 +182,7 @@ def mask_to_polygons_fallback(
                 map_points.append(map_points[0])
 
             if len(map_points) >= 4:
-                line = QgsLineString([p for p in map_points])
+                line = QgsLineString(list(map_points))
                 polygon = QgsPolygon()
                 polygon.setExteriorRing(line)
                 geom = QgsGeometry(polygon)
@@ -201,12 +200,12 @@ def mask_to_polygons_fallback(
         QgsMessageLog.logMessage(
             f"Fallback polygon conversion failed: {str(e)}\n{traceback.format_exc()}",
             "AI Segmentation",
-            level=Qgis.Warning
+            level=Qgis.MessageLevel.Warning
         )
         return []
 
 
-def find_contours(mask: np.ndarray) -> List[List[Tuple[int, int]]]:
+def find_contours(mask: np.ndarray) -> list[list[tuple[int, int]]]:
     try:
         from skimage import measure
         raw_contours = measure.find_contours(mask.astype(float), 0.5)
@@ -222,8 +221,8 @@ def find_contours(mask: np.ndarray) -> List[List[Tuple[int, int]]]:
     contours = []
     h, w = mask.shape
     visited = np.zeros_like(mask, dtype=bool)
-    padded = np.pad(mask, 1, mode='constant', constant_values=0)
-    visited_pad = np.pad(visited, 1, mode='constant', constant_values=True)
+    padded = np.pad(mask, 1, mode="constant", constant_values=0)
+    visited_pad = np.pad(visited, 1, mode="constant", constant_values=True)
 
     directions = [
         (1, 0), (1, 1), (0, 1), (-1, 1),
@@ -253,8 +252,8 @@ def trace_contour(
     visited: np.ndarray,
     start_x: int,
     start_y: int,
-    directions: List[Tuple[int, int]]
-) -> List[Tuple[int, int]]:
+    directions: list[tuple[int, int]]
+) -> list[tuple[int, int]]:
     contour = [(start_x, start_y)]
     visited[start_y, start_x] = True
 
@@ -302,7 +301,7 @@ def pixel_to_map_coords(
     pixel_x: float,
     pixel_y: float,
     transform_info: dict
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     bbox = transform_info.get("bbox")
     img_shape = transform_info.get("img_shape")
 
@@ -351,21 +350,21 @@ def apply_mask_refinement(
     """
     result = mask.copy().astype(np.uint8)
 
-    # 1. Fill holes first (before other operations)
-    if fill_holes:
-        result = _fill_holes(result)
-
-    # 2. Remove small regions (artifacts/noise)
-    if min_area > 0:
-        result = _remove_small_regions(result, min_area)
-
-    # 3. Expand/Contract (dilation/erosion) using numpy
+    # 1. Expand/Contract first so fill-holes operates on the adjusted mask
     if expand_value != 0:
         iterations = abs(expand_value)
         if expand_value > 0:
             result = _numpy_dilate(result, iterations)
         else:
             result = _numpy_erode(result, iterations)
+
+    # 2. Fill holes (on already expanded/contracted mask)
+    if fill_holes:
+        result = _fill_holes(result)
+
+    # 3. Remove small regions (artifacts/noise)
+    if min_area > 0:
+        result = _remove_small_regions(result, min_area)
 
     return result
 
@@ -398,7 +397,7 @@ def _fill_holes(mask: np.ndarray) -> np.ndarray:
 
     # Iteratively expand exterior into connected background pixels
     background = (padded == 0)
-    for _ in range(max(h, w)):  # Max iterations = image diagonal
+    for _ in range(min(max(h, w), 2048)):  # Capped to prevent excessive loops
         # Dilate exterior by 1 pixel in 4 directions using slicing
         expanded = exterior.copy()
         expanded[1:, :] |= exterior[:-1, :]
@@ -488,12 +487,84 @@ def _remove_small_regions(mask: np.ndarray, min_area: int) -> np.ndarray:
     return mask.copy()
 
 
+def count_significant_regions(mask: np.ndarray, min_ratio: float = 0.01) -> int:
+    """Count connected regions, ignoring tiny artifacts.
+
+    Only counts regions whose area is at least min_ratio * largest_region_area.
+    Uses a dilated mask to bridge 1px gaps before labeling.
+    """
+    if mask is None or mask.sum() == 0:
+        return 0
+
+    # Dilate by 1px to bridge only hairline gaps
+    bridged = _numpy_dilate(mask.astype(np.uint8), 1)
+
+    sizes = _label_region_sizes(bridged)
+    if len(sizes) == 0:
+        return 0
+
+    largest = max(sizes)
+    threshold = largest * min_ratio
+    return sum(1 for s in sizes if s >= threshold)
+
+
+def _label_region_sizes(mask: np.ndarray) -> list:
+    """Return list of region sizes (pixel counts) for each connected component."""
+    try:
+        from scipy import ndimage
+        labeled, num_features = ndimage.label(mask)
+        if num_features == 0:
+            return []
+        return list(np.bincount(labeled.ravel())[1:])
+    except ImportError:
+        pass
+
+    # Numpy fallback
+    h, w = mask.shape
+    labels = np.zeros((h, w), dtype=np.int32)
+    mask_bool = mask.astype(bool)
+    sizes = []
+
+    for start_y in range(h):
+        for start_x in range(w):
+            if mask_bool[start_y, start_x] and labels[start_y, start_x] == 0:
+                label = len(sizes) + 1
+                stack = [(start_y, start_x)]
+                labels[start_y, start_x] = label
+                count = 1
+
+                while stack:
+                    y, x = stack.pop()
+                    for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                        if 0 <= ny < h and 0 <= nx < w:
+                            if mask_bool[ny, nx] and labels[ny, nx] == 0:
+                                labels[ny, nx] = label
+                                stack.append((ny, nx))
+                                count += 1
+
+                sizes.append(count)
+
+    return sizes
+
+
 def _numpy_dilate(mask: np.ndarray, iterations: int) -> np.ndarray:
-    """Dilate mask using numpy (expand the mask)."""
+    """Dilate mask using numpy (expand the mask).
+
+    Uses scipy binary_dilation when available for better performance,
+    falls back to iterative numpy implementation.
+    """
+    try:
+        from scipy.ndimage import binary_dilation
+        struct = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=bool)
+        return binary_dilation(
+            mask, structure=struct, iterations=iterations
+        ).astype(np.uint8)
+    except ImportError:
+        pass
+
     result = mask.copy()
     for _ in range(iterations):
-        # Shift in all 4 directions and combine (4-connectivity)
-        padded = np.pad(result, 1, mode='constant', constant_values=0)
+        padded = np.pad(result, 1, mode="constant", constant_values=0)
         center = padded[1:-1, 1:-1]
         up = padded[:-2, 1:-1]
         down = padded[2:, 1:-1]
@@ -505,11 +576,23 @@ def _numpy_dilate(mask: np.ndarray, iterations: int) -> np.ndarray:
 
 
 def _numpy_erode(mask: np.ndarray, iterations: int) -> np.ndarray:
-    """Erode mask using numpy (shrink the mask)."""
+    """Erode mask using numpy (shrink the mask).
+
+    Uses scipy binary_erosion when available for better performance,
+    falls back to iterative numpy implementation.
+    """
+    try:
+        from scipy.ndimage import binary_erosion
+        struct = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=bool)
+        return binary_erosion(
+            mask, structure=struct, iterations=iterations
+        ).astype(np.uint8)
+    except ImportError:
+        pass
+
     result = mask.copy()
     for _ in range(iterations):
-        # Shift in all 4 directions and combine (4-connectivity)
-        padded = np.pad(result, 1, mode='constant', constant_values=0)
+        padded = np.pad(result, 1, mode="constant", constant_values=0)
         center = padded[1:-1, 1:-1]
         up = padded[:-2, 1:-1]
         down = padded[2:, 1:-1]
@@ -518,36 +601,3 @@ def _numpy_erode(mask: np.ndarray, iterations: int) -> np.ndarray:
         eroded = center & up & down & left & right
         result = eroded.astype(np.uint8)
     return result
-
-
-def export_to_geopackage(
-    layer: QgsVectorLayer,
-    output_path: str
-) -> Tuple[bool, str]:
-    try:
-        if not output_path.lower().endswith('.gpkg'):
-            output_path += '.gpkg'
-
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = "GPKG"
-        options.fileEncoding = "UTF-8"
-
-        error = QgsVectorFileWriter.writeAsVectorFormatV3(
-            layer,
-            output_path,
-            QgsProject.instance().transformContext(),
-            options
-        )
-
-        if error[0] == QgsVectorFileWriter.NoError:
-            QgsMessageLog.logMessage(
-                f"Exported to: {output_path}",
-                "AI Segmentation",
-                level=Qgis.Success
-            )
-            return True, f"Successfully exported to {output_path}"
-        else:
-            return False, f"Export error: {error[1]}"
-
-    except Exception as e:
-        return False, f"Export failed: {str(e)}"
