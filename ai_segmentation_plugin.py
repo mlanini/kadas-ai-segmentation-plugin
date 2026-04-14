@@ -485,8 +485,19 @@ class AISegmentationPlugin:
 
         # KADAS: Clean up menu based on interface type
         if KADAS_AVAILABLE:
-            # KADAS ribbon tab menu cleanup is handled automatically
-            pass
+            if self.menu is not None:
+                try:
+                    self.iface.removeActionMenu(
+                        self.menu,
+                        self.iface.PLUGIN_MENU, self.iface.CUSTOM_TAB, "AI"
+                    )
+                except (RuntimeError, AttributeError):
+                    pass
+                try:
+                    self.menu.deleteLater()
+                except (RuntimeError, AttributeError):
+                    pass
+                self.menu = None
         else:
             from .ui.terralab_menu import remove_from_plugins_menu, remove_plugin_from_menu
             try:
@@ -514,6 +525,14 @@ class AISegmentationPlugin:
             self.iface.removeToolBarIcon(self.action)
         except (RuntimeError, AttributeError):
             pass
+
+        # Clean up the QAction itself so it doesn't leak parented to mainWindow
+        if self.action is not None:
+            try:
+                self.action.deleteLater()
+            except (RuntimeError, AttributeError):
+                pass
+            self.action = None
 
         # 6. Remove dock widget
         if self.dock_widget:
@@ -549,7 +568,10 @@ class AISegmentationPlugin:
             self._safe_remove_rubber_band(rb)
         self.saved_rubber_bands = []
 
-        # 9. Disconnect log collector signal
+        # 9. Reset deferred-creation flag
+        self._dock_created = False
+
+        # 10. Disconnect log collector signal
         stop_log_collector()
 
     def _ensure_dock_widget(self):
